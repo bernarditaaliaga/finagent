@@ -85,6 +85,11 @@ export async function POST() {
     accountCount = accountsData.length;
 
     for (const { account, movements } of accountsData) {
+      const accNumber = account.number as string | undefined;
+      const accName = (account.name as string) ?? "Cuenta";
+      const last4 = accNumber ? accNumber.slice(-4) : "";
+      const fullAccountName = last4 ? `${accName} ••${last4}` : accName;
+
       for (const mov of movements) {
         const movId = (mov.id as string) ?? `manual_${Date.now()}_${totalImported}`;
         const description = (mov.description as string) ?? "Sin descripción";
@@ -98,7 +103,7 @@ export async function POST() {
             amount,
             description,
             date: new Date(postDate),
-            accountName: (account.name as string) ?? null,
+            accountName: fullAccountName,
           },
           create: {
             fintocId: movId,
@@ -107,7 +112,7 @@ export async function POST() {
             amount,
             currency,
             accountId: account.id as string,
-            accountName: (account.name as string) ?? null,
+            accountName: fullAccountName,
           },
         });
         totalImported++;

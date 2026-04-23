@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import Anthropic from "@anthropic-ai/sdk";
 
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
 /**
  * GET /api/savings-plan
  * Obtiene el plan activo del mes actual
@@ -22,14 +27,11 @@ export async function GET() {
 /**
  * POST /api/savings-plan
  * Genera un plan de ahorro usando Claude API
- * Body: { savingsTarget: number, month?: number, year?: number }
+ * Body: { savingsTarget: number }
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const now = new Date();
-    const month = body.month ?? now.getMonth() + 1;
-    const year = body.year ?? now.getFullYear();
     const savingsTarget = body.savingsTarget;
 
     if (!savingsTarget || savingsTarget <= 0) {
@@ -39,11 +41,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // Obtener datos financieros
-    const startOfMonth = new Date(year, month - 1, 1);
-    const endOfMonth = new Date(year, month, 1);
+    const now = new Date();
+    const currentDay = now.getDate();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
 
-    const [categories, fixedExpenses, transactions] = await Promise.all([
+    // Datos del mes actual
+    const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
+    const endOfMonth = new Date(currentYear, currentMonth, 1);
+
+    // Datos del mes siguiente (para plan alternativo)
+    const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+    const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+
+    const [categories, fixedExpenses, thisMonthTxns, bankAccounts] = await Promise.all([
       prisma.category.findMany({
         include: {
           transactions: {
@@ -55,22 +66,39 @@ export async function POST(request: Request) {
       prisma.fixedExpense.findMany({ where: { isActive: true } }),
       prisma.transaction.findMany({
         where: { date: { gte: startOfMonth, lt: endOfMonth } },
-        select: { amount: true, description: true },
+        select: { amount: true, description: true, date: true },
       }),
+      prisma.bankAccount.findMany(),
     ]);
 
-    // Calcular ingresos fijos (estimados)
-    // Detectar ingresos recurrentes: positivos que no son crédito ni traspasos internos
-    const realIncome = transactions
+    // Ingresos reales del mes (excluyendo línea de crédito)
+    const realIncome = thisMonthTxns
       .filter((t) => {
         const d = t.description.toLowerCase();
         return t.amount > 0 && !d.includes("linea de credito") && !d.includes("linea de cred");
       })
       .reduce((sum, t) => sum + t.amount, 0);
 
+    // Gastos ya realizados este mes
+    const spentSoFar = thisMonthTxns
+      .filter((t) => {
+        const d = t.description.toLowerCase();
+        return t.amount < 0 && !d.includes("linea de credito") && !d.includes("linea de cred");
+      })
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
     const totalFixedExpenses = fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
 
-    // Preparar datos de categorías con gasto histórico
+    // Saldo actual disponible
+    const saldoActual = bankAccounts
+      .filter((a) => a.type !== "line_of_credit")
+      .reduce((sum, a) => sum + a.available, 0);
+
+    // Días restantes del mes
+    const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+    const daysRemaining = daysInMonth - currentDay;
+
+    // Info de categorías
     const categoryInfo = categories.map((cat) => ({
       id: cat.id,
       name: cat.name,
@@ -79,56 +107,66 @@ export async function POST(request: Request) {
       currentSpent: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
     }));
 
-    const availableForSpending = realIncome - totalFixedExpenses - savingsTarget;
-
-    // Llamar a Claude para generar el plan
+    // Llamar a Claude
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey || apiKey.includes("tu_key_aqui")) {
-      // Sin Claude API → generar plan básico automático
       return generateBasicPlan({
-        month, year, savingsTarget, realIncome, totalFixedExpenses,
-        availableForSpending, categoryInfo,
+        savingsTarget, realIncome, totalFixedExpenses,
+        spentSoFar, saldoActual, currentDay, daysRemaining,
+        currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
       });
     }
 
     const anthropic = new Anthropic({ apiKey });
 
-    const prompt = `Eres un asesor financiero personal. Analiza estos datos y genera un plan de ahorro mensual.
+    const prompt = `Eres un asesor financiero personal chileno. Analiza la situación financiera y genera un plan de ahorro MENSUAL RECURRENTE.
 
-DATOS FINANCIEROS:
-- Ingresos del mes: ${realIncome.toLocaleString("es-CL")} CLP
-- Gastos fijos mensuales: ${totalFixedExpenses.toLocaleString("es-CL")} CLP
-- Meta de ahorro: ${savingsTarget.toLocaleString("es-CL")} CLP
-- Disponible para gastos variables: ${availableForSpending.toLocaleString("es-CL")} CLP
+HOY: ${currentDay} de ${MONTH_NAMES[currentMonth - 1]} ${currentYear}
+Quedan ${daysRemaining} días del mes.
 
-CATEGORÍAS DE GASTO (con gasto actual del mes y prioridad):
-${categoryInfo.map((c) => `- ${c.name} (${c.priority}): gastado ${c.currentSpent.toLocaleString("es-CL")} CLP${c.budgetLimit ? `, límite actual: ${c.budgetLimit.toLocaleString("es-CL")} CLP` : ""}`).join("\n")}
+SITUACIÓN ACTUAL DEL MES:
+- Ingresos recibidos este mes: $${realIncome.toLocaleString("es-CL")}
+- Gastos fijos mensuales: $${totalFixedExpenses.toLocaleString("es-CL")}
+- Ya gastado este mes (variable): $${spentSoFar.toLocaleString("es-CL")}
+- Saldo disponible hoy en cuentas: $${saldoActual.toLocaleString("es-CL")}
+
+META DE AHORRO MENSUAL: $${savingsTarget.toLocaleString("es-CL")} cada mes
+
+GASTOS POR CATEGORÍA (este mes):
+${categoryInfo.map((c) => `- ${c.name} (${c.priority}): $${c.currentSpent.toLocaleString("es-CL")} gastado`).join("\n")}
 
 PRIORIDADES:
-- "esencial": no se puede reducir (ej: cuentas, arriendo)
-- "necesario": difícil de reducir pero posible
-- "prescindible": se puede reducir significativamente
-- "innecesario": se puede eliminar o reducir al mínimo
-- "sin etiqueta": categoría sin clasificar
+- "esencial": no se puede reducir
+- "necesario": difícil de reducir
+- "prescindible": se puede reducir
+- "innecesario": se puede eliminar
 
-INSTRUCCIONES:
-1. Evalúa si la meta de ahorro es realista con los ingresos y gastos fijos
-2. Si NO es posible, explica por qué y sugiere una meta más realista
-3. Si ES posible, asigna un presupuesto máximo a cada categoría, recortando primero las innecesarias, luego prescindibles
-4. Los gastos esenciales no se recortan
-5. Los necesarios se recortan solo si es imprescindible
+ANALIZA Y RESPONDE:
 
-Responde EXACTAMENTE en este formato JSON:
+1. ¿Es viable ahorrar $${savingsTarget.toLocaleString("es-CL")} ESTE mes considerando que ya estamos a día ${currentDay} y ya se gastaron $${spentSoFar.toLocaleString("es-CL")}?
+
+2. ¿Es viable como plan mensual recurrente (empezando desde el 1 del mes siguiente)?
+
+3. Si no es viable para ningún mes (los ingresos fijos menos gastos fijos no alcanzan), dilo claramente.
+
+4. Asigna presupuesto máximo por categoría, recortando innecesarios primero.
+
+Responde EXACTAMENTE en JSON:
 {
-  "feasible": true/false,
-  "message": "Explicación para el usuario en español, máximo 2-3 frases",
-  "suggestedTarget": null o número (si no es feasible, sugiere una meta más realista),
+  "thisMonthFeasible": true/false,
+  "thisMonthMessage": "Análisis del mes actual en 1-2 frases",
+  "nextMonthFeasible": true/false,
+  "nextMonthMessage": "Análisis para meses futuros en 1-2 frases",
+  "neverFeasible": true/false,
+  "suggestedTarget": null o número (meta más realista si no es viable),
+  "startMonth": número (mes recomendado para empezar: ${currentMonth} o ${nextMonth}),
+  "startYear": ${currentMonth === 12 ? nextYear : currentYear},
   "budgets": [
     { "categoryId": "id", "categoryName": "nombre", "budgetAmount": número }
   ]
 }
 
-Solo responde el JSON, sin texto adicional.`;
+Solo JSON, sin texto adicional.`;
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -140,14 +178,18 @@ Solo responde el JSON, sin texto adicional.`;
     const planData = JSON.parse(text);
 
     return NextResponse.json({
-      feasible: planData.feasible,
-      message: planData.message,
-      suggestedTarget: planData.suggestedTarget,
-      budgets: planData.budgets,
+      ...planData,
       income: realIncome,
       fixedExpenses: totalFixedExpenses,
+      spentSoFar,
+      saldoActual,
       savingsTarget,
-      availableForSpending,
+      currentDay,
+      daysRemaining,
+      currentMonth,
+      currentYear,
+      nextMonth,
+      nextYear,
     });
   } catch (error) {
     console.error("Error generando plan:", error);
@@ -165,7 +207,6 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { month, year, savingsTarget, income, fixedExpenses, budgets } = body;
 
-    // Upsert del plan
     const plan = await prisma.savingsPlan.upsert({
       where: { month_year: { month, year } },
       update: {
@@ -184,7 +225,6 @@ export async function PUT(request: Request) {
       },
     });
 
-    // Eliminar budgets anteriores y crear nuevos
     await prisma.categoryBudget.deleteMany({ where: { planId: plan.id } });
 
     for (const b of budgets) {
@@ -197,7 +237,7 @@ export async function PUT(request: Request) {
       });
     }
 
-    // Actualizar budgetLimit en cada categoría para que se refleje en el dashboard
+    // Actualizar budgetLimit en cada categoría
     for (const b of budgets) {
       await prisma.category.update({
         where: { id: b.categoryId },
@@ -214,31 +254,31 @@ export async function PUT(request: Request) {
 
 // Plan básico sin Claude API
 function generateBasicPlan({
-  month, year, savingsTarget, realIncome, totalFixedExpenses,
-  availableForSpending, categoryInfo,
+  savingsTarget, realIncome, totalFixedExpenses,
+  spentSoFar, saldoActual, currentDay, daysRemaining,
+  currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
 }: {
-  month: number; year: number; savingsTarget: number; realIncome: number;
-  totalFixedExpenses: number; availableForSpending: number;
+  savingsTarget: number; realIncome: number; totalFixedExpenses: number;
+  spentSoFar: number; saldoActual: number; currentDay: number; daysRemaining: number;
+  currentMonth: number; currentYear: number; nextMonth: number; nextYear: number;
   categoryInfo: { id: string; name: string; priority: string; budgetLimit: number | null; currentSpent: number }[];
 }) {
-  if (availableForSpending < 0) {
-    return NextResponse.json({
-      feasible: false,
-      message: `Con ingresos de $${realIncome.toLocaleString("es-CL")} y gastos fijos de $${totalFixedExpenses.toLocaleString("es-CL")}, no alcanza para ahorrar $${savingsTarget.toLocaleString("es-CL")}. El máximo que podrías ahorrar es $${Math.max(0, realIncome - totalFixedExpenses).toLocaleString("es-CL")}.`,
-      suggestedTarget: Math.max(0, Math.floor((realIncome - totalFixedExpenses) * 0.5)),
-      budgets: [],
-      income: realIncome,
-      fixedExpenses: totalFixedExpenses,
-      savingsTarget,
-      availableForSpending,
-    });
-  }
+  const maxMonthly = realIncome - totalFixedExpenses;
+  const remainingThisMonth = saldoActual - savingsTarget;
 
-  // Distribuir el presupuesto disponible
+  // ¿Es viable como plan mensual?
+  const neverFeasible = maxMonthly <= 0 || savingsTarget > maxMonthly;
+
+  // ¿Es viable este mes?
+  const thisMonthFeasible = !neverFeasible && remainingThisMonth > 0 && currentDay <= 25;
+
+  // ¿Es viable el próximo mes?
+  const nextMonthFeasible = !neverFeasible;
+
+  // Presupuestos
+  const availableForSpending = realIncome - totalFixedExpenses - savingsTarget;
   const totalCurrentSpent = categoryInfo.reduce((sum, c) => sum + c.currentSpent, 0);
-  const reductionNeeded = totalCurrentSpent > availableForSpending
-    ? totalCurrentSpent - availableForSpending
-    : 0;
+  const reductionNeeded = Math.max(0, totalCurrentSpent - availableForSpending);
 
   let remainingCut = reductionNeeded;
   const priorityOrder = ["innecesario", "prescindible", "necesario", "sin etiqueta"];
@@ -254,25 +294,43 @@ function generateBasicPlan({
       budget -= cut;
       remainingCut -= cut;
     }
-    return {
-      categoryId: cat.id,
-      categoryName: cat.name,
-      budgetAmount: Math.round(budget),
-    };
+    return { categoryId: cat.id, categoryName: cat.name, budgetAmount: Math.round(budget) };
   });
 
-  const feasible = remainingCut <= 0;
+  let thisMonthMessage: string;
+  let nextMonthMessage: string;
+
+  if (neverFeasible) {
+    thisMonthMessage = `Con ingresos de $${realIncome.toLocaleString("es-CL")} y gastos fijos de $${totalFixedExpenses.toLocaleString("es-CL")}, no es posible ahorrar $${savingsTarget.toLocaleString("es-CL")} en ningún mes.`;
+    nextMonthMessage = thisMonthMessage;
+  } else if (!thisMonthFeasible) {
+    thisMonthMessage = `Ya estamos a día ${currentDay} y llevas $${spentSoFar.toLocaleString("es-CL")} gastados. No es realista empezar este mes.`;
+    nextMonthMessage = `A partir de ${MONTH_NAMES[nextMonth - 1]}, con disciplina puedes ahorrar $${savingsTarget.toLocaleString("es-CL")} al mes.`;
+  } else {
+    thisMonthMessage = `Quedan ${daysRemaining} días y tienes $${saldoActual.toLocaleString("es-CL")} disponibles. Es viable ahorrar $${savingsTarget.toLocaleString("es-CL")} si controlas los gastos.`;
+    nextMonthMessage = `Como plan mensual recurrente, es viable.`;
+  }
 
   return NextResponse.json({
-    feasible,
-    message: feasible
-      ? `Tu plan es viable. Con $${availableForSpending.toLocaleString("es-CL")} disponibles para gastos variables, puedes ahorrar $${savingsTarget.toLocaleString("es-CL")} al mes ajustando tus gastos prescindibles e innecesarios.`
-      : `Es difícil ahorrar $${savingsTarget.toLocaleString("es-CL")} con tus gastos actuales. Aún recortando gastos innecesarios, faltarían $${Math.round(remainingCut).toLocaleString("es-CL")}.`,
-    suggestedTarget: feasible ? null : Math.floor(savingsTarget - remainingCut),
+    thisMonthFeasible,
+    thisMonthMessage,
+    nextMonthFeasible,
+    nextMonthMessage,
+    neverFeasible,
+    suggestedTarget: neverFeasible ? Math.max(0, Math.floor(maxMonthly * 0.5)) : null,
+    startMonth: thisMonthFeasible ? currentMonth : nextMonth,
+    startYear: thisMonthFeasible ? currentYear : (currentMonth === 12 ? nextYear : currentYear),
     budgets,
     income: realIncome,
     fixedExpenses: totalFixedExpenses,
+    spentSoFar,
+    saldoActual,
     savingsTarget,
-    availableForSpending,
+    currentDay,
+    daysRemaining,
+    currentMonth,
+    currentYear,
+    nextMonth,
+    nextYear,
   });
 }
