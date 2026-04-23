@@ -33,7 +33,21 @@ model Category {
   budgetLimit  Float?        // límite de gasto mensual (opcional)
   transactions Transaction[]
   fixedExpenses FixedExpense[]
+  rules        CategoryRule[]
   createdAt    DateTime      @default(now())
+}
+
+// ===== REGLAS DE CATEGORIZACIÓN =====
+// Mapea keywords o remitentes a categorías automáticamente
+model CategoryRule {
+  id          String   @id @default(cuid())
+  keyword     String   // keyword o nombre del remitente
+  categoryId  String
+  category    Category @relation(fields: [categoryId], references: [id])
+  issender    Boolean  @default(false) // true = es regla por remitente
+  createdAt   DateTime @default(now())
+
+  @@unique([keyword, categoryId])
 }
 
 // ===== GASTOS FIJOS =====

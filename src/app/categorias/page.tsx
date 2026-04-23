@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db";
-import { formatCLP } from "@/lib/format";
 import { CategoriasClient } from "@/components/categorias-client";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +25,11 @@ export default async function CategoriasPage() {
     take: 20,
   });
 
+  const rulesData = await prisma.categoryRule.findMany({
+    include: { category: { select: { name: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+
   const categoryData = categories.map((cat) => ({
     id: cat.id,
     name: cat.name,
@@ -43,6 +47,14 @@ export default async function CategoriasPage() {
     amount: t.amount,
   }));
 
+  const rules = rulesData.map((r) => ({
+    id: r.id,
+    keyword: r.keyword,
+    categoryId: r.categoryId,
+    issender: r.issender,
+    categoryName: r.category.name,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -50,7 +62,7 @@ export default async function CategoriasPage() {
         <p className="text-slate-500">Organiza tus gastos en categorias personalizadas</p>
       </div>
 
-      <CategoriasClient categories={categoryData} uncategorized={uncategorizedData} />
+      <CategoriasClient categories={categoryData} uncategorized={uncategorizedData} rules={rules} />
     </div>
   );
 }

@@ -5,18 +5,30 @@ import { prisma } from "@/lib/db";
 /**
  * POST /api/fintoc/connect
  *
- * Después de que el usuario se loguea en el widget,
- * buscamos los links existentes en Fintoc y guardamos el más reciente.
+ * Recibe datos del widget onSuccess + busca en la API de Fintoc
+ * para guardar el link bancario en la DB.
  */
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    let body: Record<string, unknown> = {};
+    try {
+      body = await request.json();
+    } catch {
+      // no body is ok
+    }
+
+    const widgetData = body.widgetData as Record<string, unknown> | undefined;
+    console.log("=== CONNECT: widgetData ===", JSON.stringify(widgetData));
+
+    // Buscar links en Fintoc API
     const links = await getLinks();
-    console.log("Links encontrados:", links.length);
-    console.log("Links:", JSON.stringify(links.map((l: Record<string, unknown>) => ({
-      id: l.id,
-      link_token: l.link_token || l.linkToken,
-      status: l.status,
-    }))));
+    console.log("=== CONNECT: links from API ===", JSON.stringify(
+      links.map((l: Record<string, unknown>) => ({
+        id: l.id,
+        link_token: l.link_token,
+        status: l.status,
+      }))
+    ));
 
     if (links.length === 0) {
       return NextResponse.json(
@@ -27,24 +39,33 @@ export async function POST() {
 
     // Tomar el link más reciente
     const link = links[0] as Record<string, unknown>;
-    const linkToken = (link.link_token || link.linkToken || link.id) as string;
+    const linkId = link.id as string;
     const institution = link.institution as Record<string, string> | undefined;
+    const holderName = (link.holder_name || link.holderName || null) as string | null;
+
+    // El link_token puede venir de: API, widget callback, o usamos el linkId como fallback
+    const linkToken = (link.link_token as string)
+      || (widgetData?.link_token as string)
+      || (widgetData?.linkToken as string)
+      || linkId;
 
     // Guardar en BD
     await prisma.bankLink.upsert({
-      where: { fintocLinkId: linkToken },
-      update: { lastSync: new Date() },
+      where: { fintocLinkId: linkId },
+      update: {
+        lastSync: new Date(),
+      },
       create: {
-        fintocLinkId: linkToken,
+        fintocLinkId: linkId,
         bankName: institution?.name ?? "Banco de Chile",
-        holderName: (link.holder_name || link.holderName || null) as string | null,
+        holderName: holderName,
         lastSync: new Date(),
       },
     });
 
     return NextResponse.json({
       success: true,
-      linkId: link.id,
+      linkId: linkId,
       linkToken: linkToken,
       bank: institution?.name,
     });
