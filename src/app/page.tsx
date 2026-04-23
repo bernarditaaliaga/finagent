@@ -4,10 +4,21 @@ import { DashboardClient } from "@/components/dashboard-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const currentMonth = params.month
+    ? parseInt(params.month as string)
+    : now.getMonth() + 1;
+  const currentYear = params.year
+    ? parseInt(params.year as string)
+    : now.getFullYear();
+  const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
+  const endOfMonth = new Date(currentYear, currentMonth, 1);
 
   let income = 0;
   let expense = 0;
@@ -22,7 +33,6 @@ export default async function DashboardPage() {
           where: { date: { gte: startOfMonth, lt: endOfMonth } },
           include: { category: true },
           orderBy: { date: "desc" },
-          take: 50,
         }),
         prisma.category.findMany({
           include: {
@@ -73,15 +83,8 @@ export default async function DashboardPage() {
     console.error("Error loading dashboard data:", error);
   }
 
-  const monthName = new Intl.DateTimeFormat("es-CL", { month: "long" }).format(now);
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 capitalize">{monthName} {now.getFullYear()}</p>
-      </div>
-
       {/* Resumen: Ingresos / Gastos / Balance */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
@@ -128,7 +131,11 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <DashboardClient transactions={serializedTransactions} />
+      <DashboardClient
+        transactions={serializedTransactions}
+        currentMonth={currentMonth}
+        currentYear={currentYear}
+      />
     </div>
   );
 }

@@ -1,8 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatCLP, formatDate } from "@/lib/format";
-import { RefreshCw, Plus } from "lucide-react";
+import { RefreshCw, Plus, ChevronLeft, ChevronRight } from "lucide-react";
+
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
 
 interface Transaction {
   id: string;
@@ -15,12 +21,42 @@ interface Transaction {
 
 export function DashboardClient({
   transactions,
+  currentMonth,
+  currentYear,
 }: {
   transactions: Transaction[];
+  currentMonth: number;
+  currentYear: number;
 }) {
+  const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const now = new Date();
+  const isCurrentMonth =
+    currentMonth === now.getMonth() + 1 && currentYear === now.getFullYear();
+
+  function goToPreviousMonth() {
+    let m = currentMonth - 1;
+    let y = currentYear;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+    router.push(`/?month=${m}&year=${y}`);
+  }
+
+  function goToNextMonth() {
+    if (isCurrentMonth) return;
+    let m = currentMonth + 1;
+    let y = currentYear;
+    if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    router.push(`/?month=${m}&year=${y}`);
+  }
 
   // Sincronizar con Fintoc
   async function handleSync() {
@@ -67,6 +103,28 @@ export function DashboardClient({
 
   return (
     <div className="space-y-4">
+      {/* Navegación de mes */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={goToPreviousMonth}
+          className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"
+          aria-label="Mes anterior"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-xl font-bold text-slate-900">
+          {MONTH_NAMES[currentMonth - 1]} {currentYear}
+        </h1>
+        <button
+          onClick={goToNextMonth}
+          disabled={isCurrentMonth}
+          className="p-2 rounded-lg hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Mes siguiente"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+
       {/* Barra de acciones */}
       <div className="flex items-center gap-3">
         <button
