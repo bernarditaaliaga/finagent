@@ -102,6 +102,22 @@ model BankAccount {
   updatedAt   DateTime @updatedAt
 }
 
+// ===== TARJETAS DE CRÉDITO =====
+model CreditCard {
+  id              String   @id @default(cuid())
+  name            String   // "Visa Banco de Chile"
+  lastFourDigits  String?  // "1234"
+  cupoTotal       Float    // límite total ($500,000)
+  deudaActual     Float    @default(0) // deuda vigente
+  facturadoMes    Float    @default(0) // facturado del mes actual
+  pagadoMes       Float    @default(0) // pagado este mes
+  billingCloseDay Int      @default(26) // día de cierre de facturación
+  isTitular       Boolean  @default(true) // true = titular, false = adicional
+  fintocId        String?  @unique // ID de Fintoc (si viene de ahí)
+  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now())
+}
+
 // ===== TRICOUNT / SPLIT DE GASTOS =====
 model SplitGroup {
   id        String       @id @default(cuid())

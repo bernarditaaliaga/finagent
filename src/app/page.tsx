@@ -32,10 +32,8 @@ export default async function DashboardPage({
   let saldoActual = 0;
   let totalIngresos = 0;
   let totalGastos = 0;
-  let deudaCredito = 0;
-  let facturadoMes = 0;
-  let pagadoMes = 0;
-  let creditLimit = 0;
+  let creditCards: { id: string; name: string; lastFourDigits: string | null; cupoTotal: number; deudaActual: number; facturadoMes: number; pagadoMes: number; billingCloseDay: number }[] = [];
+  let estimacionProximoMes = 0;
   let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; priority: string | null; spent: number }[] = [];
   let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; isCreditLine: boolean }[] = [];
   let accounts: { id: string; name: string }[] = [];
@@ -46,7 +44,7 @@ export default async function DashboardPage({
       ...(currentAccountId ? { accountId: currentAccountId } : {}),
     };
 
-    const [transactions, categories, distinctAccounts, bankAccounts] =
+    const [transactions, categories, distinctAccounts, bankAccounts, creditCardsData] =
       await Promise.all([
         prisma.transaction.findMany({
           where: baseWhere,
@@ -67,6 +65,7 @@ export default async function DashboardPage({
           select: { accountId: true, accountName: true },
         }),
         prisma.bankAccount.findMany(),
+        prisma.creditCard.findMany({ where: { isTitular: true } }),
       ]);
 
     // === SALDO ACTUAL ===
@@ -98,30 +97,51 @@ export default async function DashboardPage({
       .filter((t) => t.amount < 0 && !isCreditLineMovement(t.description))
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // === LÍNEA DE CRÉDITO / TARJETA ===
-    const creditMovements = transactions.filter((t) =>
-      isCreditLineMovement(t.description)
-    );
-    // Facturado: préstamos tomados de la línea (positivos = dinero recibido del crédito)
-    facturadoMes = creditMovements
-      .filter((t) => t.amount > 0)
-      .reduce((sum, t) => sum + t.amount, 0);
-    // Pagado: pagos hechos a la línea (negativos = dinero devuelto al crédito)
-    pagadoMes = creditMovements
-      .filter((t) => t.amount < 0)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    deudaCredito = Math.max(0, facturadoMes - pagadoMes);
+    // === TARJETAS DE CRÉDITO ===
+    creditCards = creditCardsData.map((card) => ({
+      id: card.id,
+      name: card.name,
+      lastFourDigits: card.lastFourDigits,
+      cupoTotal: card.cupoTotal,
+      deudaActual: card.deudaActual,
+      facturadoMes: card.facturadoMes,
+      pagadoMes: card.pagadoMes,
+      billingCloseDay: card.billingCloseDay,
+    }));
 
-    // Obtener límite de crédito de la cuenta corriente
-    const ccAccount = bankAccounts.find((a) => a.creditLimit > 0);
-    if (ccAccount) {
-      creditLimit = ccAccount.creditLimit;
-      // Deuda real = límite - disponible (más preciso que solo movimientos del mes)
-      const deudaReal = ccAccount.creditLimit - ccAccount.available;
-      if (deudaReal > 0) {
-        deudaCredito = deudaReal;
-      }
+    // Detectar pago de TC en transacciones bancarias ("Cargo por pago tc", "pago tc")
+    const tcPayments = transactions.filter((t) => {
+      const d = t.description.toLowerCase();
+      return d.includes("pago tc") || d.includes("pago tarjeta");
+    });
+    const totalPagadoTC = tcPayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // Actualizar pagadoMes si encontramos pagos en las transacciones
+    if (creditCards.length > 0 && totalPagadoTC > 0) {
+      creditCards[0].pagadoMes = totalPagadoTC;
     }
+
+    // === ESTIMACIÓN PRÓXIMO MES ===
+    // El cierre es el día 26. Gastos desde el 27 del mes anterior hasta el 26 del mes actual
+    // se facturan en el próximo mes.
+    // Para estimar lo que se facturará el próximo mes: gastos desde el 27 del mes actual
+    const closeDay = creditCards[0]?.billingCloseDay ?? 26;
+    const startBillingPeriod = new Date(currentYear, currentMonth - 1, closeDay + 1);
+    // Buscar transacciones de TC en el periodo actual de facturación
+    // "Cargo por pago tc" nos dice cuánto fue el facturado este mes
+    const facturadoFromTxns = tcPayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    if (creditCards.length > 0 && facturadoFromTxns > 0 && creditCards[0].facturadoMes === 0) {
+      creditCards[0].facturadoMes = facturadoFromTxns;
+    }
+
+    // Para estimar próximo mes, buscar gastos con "Pago:" (compras con TC)
+    // que ocurrieron después del cierre (día 27+)
+    const gastosPostCierre = transactions.filter((t) => {
+      const txDate = new Date(t.date);
+      return t.amount < 0 && txDate >= startBillingPeriod && !isCreditLineMovement(t.description);
+    });
+    // Esto es una estimación rough - los gastos con "Pago:" podrían ser TC o débito
+    // Por ahora mostramos el total de gastos post-cierre como referencia
+    estimacionProximoMes = gastosPostCierre.reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     // === CATEGORÍAS (solo gastos reales) ===
     categoryData = categories.map((cat) => ({
@@ -189,57 +209,72 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Tarjeta de Crédito / Línea de Crédito */}
-      {(deudaCredito > 0 || facturadoMes > 0 || pagadoMes > 0 || creditLimit > 0) && (
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-5 shadow-sm text-white">
-          <p className="text-sm font-medium text-slate-300 mb-3">LÍNEA DE CRÉDITO</p>
+      {/* Tarjetas de Crédito */}
+      {creditCards.map((card) => (
+        <div key={card.id} className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-5 shadow-sm text-white">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-medium text-slate-300">
+              TARJETA DE CRÉDITO{card.lastFourDigits ? ` •••• ${card.lastFourDigits}` : ""}
+            </p>
+            <p className="text-xs text-slate-400">{card.name}</p>
+          </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
               <p className="text-xs text-slate-400">Deuda Total</p>
-              <p className={`text-xl font-bold ${deudaCredito > 0 ? "text-orange-400" : "text-emerald-400"}`}>
-                {formatCLP(deudaCredito)}
+              <p className={`text-xl font-bold ${card.deudaActual > 0 ? "text-orange-400" : "text-emerald-400"}`}>
+                {formatCLP(card.deudaActual)}
               </p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Facturado este mes</p>
               <p className="text-xl font-bold text-red-400">
-                {formatCLP(facturadoMes)}
+                {formatCLP(card.facturadoMes)}
               </p>
             </div>
             <div>
               <p className="text-xs text-slate-400">Pagado este mes</p>
               <p className="text-xl font-bold text-emerald-400">
-                {formatCLP(pagadoMes)}
+                {formatCLP(card.pagadoMes)}
               </p>
             </div>
-            {creditLimit > 0 && (
-              <div>
-                <p className="text-xs text-slate-400">Disponible</p>
-                <p className="text-xl font-bold text-blue-400">
-                  {formatCLP(creditLimit - deudaCredito)}
-                </p>
-              </div>
-            )}
+            <div>
+              <p className="text-xs text-slate-400">Cupo Disponible</p>
+              <p className="text-xl font-bold text-blue-400">
+                {formatCLP(card.cupoTotal - card.deudaActual)}
+              </p>
+            </div>
           </div>
-          {creditLimit > 0 && (
-            <div className="mt-3">
-              <div className="flex justify-between text-xs text-slate-400 mb-1">
-                <span>Uso: {Math.round((deudaCredito / creditLimit) * 100)}%</span>
-                <span>Límite: {formatCLP(creditLimit)}</span>
-              </div>
-              <div className="w-full bg-slate-700 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all ${
-                    deudaCredito / creditLimit > 0.8 ? "bg-red-500" :
-                    deudaCredito / creditLimit > 0.5 ? "bg-orange-400" : "bg-emerald-400"
-                  }`}
-                  style={{ width: `${Math.min(100, (deudaCredito / creditLimit) * 100)}%` }}
-                />
+          {/* Barra de uso */}
+          <div className="mt-3">
+            <div className="flex justify-between text-xs text-slate-400 mb-1">
+              <span>Uso: {Math.round((card.deudaActual / card.cupoTotal) * 100)}%</span>
+              <span>Cupo: {formatCLP(card.cupoTotal)}</span>
+            </div>
+            <div className="w-full bg-slate-700 rounded-full h-2">
+              <div
+                className={`h-2 rounded-full transition-all ${
+                  card.deudaActual / card.cupoTotal > 0.8 ? "bg-red-500" :
+                  card.deudaActual / card.cupoTotal > 0.5 ? "bg-orange-400" : "bg-emerald-400"
+                }`}
+                style={{ width: `${Math.min(100, (card.deudaActual / card.cupoTotal) * 100)}%` }}
+              />
+            </div>
+          </div>
+          {/* Estimación próximo mes */}
+          {estimacionProximoMes > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">
+                  Estimación próxima facturación (gastos desde día {card.billingCloseDay + 1})
+                </p>
+                <p className="text-sm font-bold text-yellow-400">
+                  ~{formatCLP(estimacionProximoMes)}
+                </p>
               </div>
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {/* Progreso del mes */}
       {saldoInicial > 0 && (

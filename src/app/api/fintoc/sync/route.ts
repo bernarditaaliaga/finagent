@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccountsAndMovements, getAccountBalances } from "@/lib/fintoc";
+import { getAccountsAndMovements, getAccountBalances, getCreditCards } from "@/lib/fintoc";
 import { prisma } from "@/lib/db";
 
 /**
@@ -49,6 +49,35 @@ export async function POST() {
       }
     } catch (e) {
       console.error("Error syncing balances:", e);
+    }
+
+    // Sync credit cards
+    try {
+      const creditCards = await getCreditCards(linkToken);
+      for (const card of creditCards) {
+        // Solo guardar tarjetas donde es titular
+        if (!card.isTitular) continue;
+        await prisma.creditCard.upsert({
+          where: { fintocId: card.id },
+          update: {
+            cupoTotal: card.cupoTotal,
+            deudaActual: card.deudaActual,
+            name: card.name,
+            lastFourDigits: card.lastFourDigits,
+            isTitular: card.isTitular,
+          },
+          create: {
+            fintocId: card.id,
+            name: card.name,
+            lastFourDigits: card.lastFourDigits,
+            cupoTotal: card.cupoTotal,
+            deudaActual: card.deudaActual,
+            isTitular: card.isTitular,
+          },
+        });
+      }
+    } catch (e) {
+      console.error("Error syncing credit cards:", e);
     }
 
     // Sync transactions

@@ -57,6 +57,35 @@ export async function getAccountsAndMovements(linkToken: string) {
   return result;
 }
 
+// Obtiene tarjetas de crédito del link
+export async function getCreditCards(linkToken: string) {
+  const headers = getHeaders();
+  try {
+    const res = await fetch(
+      `${FINTOC_BASE_URL}/credit_cards?link_token=${linkToken}`,
+      { headers }
+    );
+    if (!res.ok) return [];
+    const cards = await res.json();
+    return cards.map((c: Record<string, unknown>) => {
+      const balance = c.balance as Record<string, number> | null;
+      const holder = c.holder as Record<string, string> | null;
+      return {
+        id: c.id as string,
+        name: c.name as string,
+        lastFourDigits: (c.number as string)?.slice(-4) ?? null,
+        cupoTotal: balance?.limit ?? 0,
+        deudaActual: balance?.current ?? 0,
+        available: balance?.available ?? 0,
+        isTitular: holder?.type === "TITULAR",
+        currency: (c.currency as string) ?? "CLP",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // Obtiene balances de todas las cuentas
 export async function getAccountBalances(linkToken: string) {
   const headers = getHeaders();
