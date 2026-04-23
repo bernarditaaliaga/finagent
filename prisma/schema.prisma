@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ===== TRANSACCIONES =====
+// Cada movimiento bancario (importado de Fintoc o manual)
+model Transaction {
+  id          String   @id @default(cuid())
+  fintocId    String?  @unique // ID original de Fintoc (null si es manual)
+  date        DateTime
+  description String
+  amount      Float    // positivo = ingreso, negativo = gasto
+  currency    String   @default("CLP")
+  accountId   String?
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== CATEGORÍAS =====
+// Ej: "Casa", "Colegiatura", "Carrete", "Insumos"
+model Category {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  icon         String?       // emoji o nombre de icono
+  color        String?       // color hex para el dashboard
+  budgetLimit  Float?        // límite de gasto mensual (opcional)
+  transactions Transaction[]
+  fixedExpenses FixedExpense[]
+  createdAt    DateTime      @default(now())
+}
+
+// ===== GASTOS FIJOS =====
+// Ej: "Luz" el día 4 de cada mes, "Agua" el día 10
+model FixedExpense {
+  id          String   @id @default(cuid())
+  name        String   // "Cuenta de luz", "Internet"
+  amount      Float
+  dayOfMonth  Int      // día del mes en que se paga (1-28)
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  isActive    Boolean  @default(true)
+  lastPaidAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== METAS DE AHORRO =====
+model SavingsGoal {
+  id            String   @id @default(cuid())
+  name          String   // "Vacaciones", "Fondo emergencia"
+  targetAmount  Float
+  currentAmount Float    @default(0)
+  deadline      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ===== CONEXIÓN BANCARIA (Fintoc) =====
+model BankLink {
+  id          String   @id @default(cuid())
+  fintocLinkId String  @unique
+  bankName    String
+  holderName  String?
+  lastSync    DateTime?
+  createdAt   DateTime @default(now())
+}
+
+// ===== TRICOUNT / SPLIT DE GASTOS =====
+model SplitGroup {
+  id        String       @id @default(cuid())
+  name      String       // "Asado viernes", "Vacaciones"
+  members   SplitMember[]
+  expenses  SplitExpense[]
+  createdAt DateTime     @default(now())
+}
+
+model SplitMember {
+  id       String        @id @default(cuid())
+  name     String
+  groupId  String
+  group    SplitGroup    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  payments SplitExpense[] @relation("PaidBy")
+  shares   SplitShare[]
+}
+
+model SplitExpense {
+  id          String       @id @default(cuid())
+  description String
+  amount      Float
+  paidById    String
+  paidBy      SplitMember  @relation("PaidBy", fields: [paidById], references: [id])
+  groupId     String
+  group       SplitGroup   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  shares      SplitShare[]
+  createdAt   DateTime     @default(now())
+}
+
+model SplitShare {
+  id        String       @id @default(cuid())
+  memberId  String
+  member    SplitMember  @relation(fields: [memberId], references: [id])
+  expenseId String
+  expense   SplitExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  amount    Float        // cuánto le corresponde pagar a esta persona
+}
