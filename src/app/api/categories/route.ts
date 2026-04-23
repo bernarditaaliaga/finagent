@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         icon: body.icon ?? null,
         color: body.color ?? "#6B7280",
         budgetLimit: body.budgetLimit ?? null,
+        priority: body.priority ?? null,
       },
     });
     return NextResponse.json(category, { status: 201 });
@@ -60,6 +61,33 @@ export async function POST(request: Request) {
     console.error("Error creando categoría:", error);
     return NextResponse.json(
       { error: "Error al crear categoría" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PATCH /api/categories
+ * Actualizar categoría (ej: cambiar prioridad)
+ */
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, ...data } = body;
+    const category = await prisma.category.update({
+      where: { id },
+      data: {
+        ...(data.priority !== undefined && { priority: data.priority }),
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.color !== undefined && { color: data.color }),
+        ...(data.budgetLimit !== undefined && { budgetLimit: data.budgetLimit }),
+      },
+    });
+    return NextResponse.json(category);
+  } catch (error) {
+    console.error("Error actualizando categoría:", error);
+    return NextResponse.json(
+      { error: "Error al actualizar categoría" },
       { status: 500 }
     );
   }

@@ -32,6 +32,7 @@ model Category {
   icon         String?       // emoji o nombre de icono
   color        String?       // color hex para el dashboard
   budgetLimit  Float?        // límite de gasto mensual (opcional)
+  priority     String?       // "esencial", "necesario", "prescindible", "innecesario"
   transactions Transaction[]
   fixedExpenses FixedExpense[]
   rules        CategoryRule[]

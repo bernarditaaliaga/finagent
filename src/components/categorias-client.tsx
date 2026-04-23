@@ -11,9 +11,17 @@ interface Category {
   icon: string | null;
   color: string | null;
   budgetLimit: number | null;
+  priority: string | null;
   totalTransactions: number;
   spentThisMonth: number;
 }
+
+const PRIORITIES = [
+  { value: "esencial", label: "Esencial", color: "bg-red-100 text-red-700", desc: "No se puede reducir" },
+  { value: "necesario", label: "Necesario", color: "bg-orange-100 text-orange-700", desc: "Difícil de reducir" },
+  { value: "prescindible", label: "Prescindible", color: "bg-yellow-100 text-yellow-700", desc: "Se puede reducir" },
+  { value: "innecesario", label: "Innecesario", color: "bg-slate-100 text-slate-600", desc: "Se puede eliminar" },
+];
 
 interface Transaction {
   id: string;
@@ -77,6 +85,7 @@ export function CategoriasClient({
       body: JSON.stringify({
         name: formData.get("name"),
         color: formData.get("color"),
+        priority: formData.get("priority") || null,
         budgetLimit: formData.get("budgetLimit")
           ? parseFloat(formData.get("budgetLimit") as string)
           : null,
@@ -110,6 +119,19 @@ export function CategoriasClient({
       body: JSON.stringify({ categoryId: null }),
     });
     window.location.reload();
+  }
+
+  async function updatePriority(categoryId: string, priority: string | null) {
+    const res = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: categoryId, priority }),
+    });
+    if (res.ok) {
+      setCategories(categories.map((c) =>
+        c.id === categoryId ? { ...c, priority } : c
+      ));
+    }
   }
 
   async function handleAutoCategorize() {
@@ -302,6 +324,17 @@ export function CategoriasClient({
               placeholder="150000"
             />
           </div>
+          <div className="w-40">
+            <label className="block text-xs text-slate-500 mb-1">Prioridad</label>
+            <select name="priority" className="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="">Sin etiqueta</option>
+              {PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             type="submit"
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
@@ -314,38 +347,70 @@ export function CategoriasClient({
       {/* Grid de categorías - clickeables */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((cat) => (
-          <button
+          <div
             key={cat.id}
-            onClick={() => router.push(`/categorias?cat=${cat.id}`)}
-            className="bg-white rounded-xl p-5 shadow-sm border-l-4 text-left hover:shadow-md transition-shadow cursor-pointer"
+            className="bg-white rounded-xl p-5 shadow-sm border-l-4 hover:shadow-md transition-shadow"
             style={{ borderLeftColor: cat.color ?? "#6B7280" }}
           >
-            <h3 className="font-semibold text-slate-900">{cat.name}</h3>
-            <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
-              {formatCLP(cat.spentThisMonth)}
-            </p>
-            {cat.budgetLimit && (
-              <div className="mt-2">
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
-                  <span>de {formatCLP(cat.budgetLimit)}</span>
+            <div className="flex items-start justify-between gap-2">
+              <button
+                onClick={() => router.push(`/categorias?cat=${cat.id}`)}
+                className="text-left flex-1"
+              >
+                <h3 className="font-semibold text-slate-900">{cat.name}</h3>
+              </button>
+              {(() => {
+                const p = PRIORITIES.find((pr) => pr.value === cat.priority);
+                return p ? (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.color}`}>
+                    {p.label}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+            <button
+              onClick={() => router.push(`/categorias?cat=${cat.id}`)}
+              className="text-left w-full"
+            >
+              <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
+                {formatCLP(cat.spentThisMonth)}
+              </p>
+              {cat.budgetLimit && (
+                <div className="mt-2">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
+                    <span>de {formatCLP(cat.budgetLimit)}</span>
+                  </div>
+                  <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{
+                        width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
+                        backgroundColor:
+                          cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
-                  <div
-                    className="h-2 rounded-full transition-all"
-                    style={{
-                      width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
-                      backgroundColor:
-                        cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-            <p className="text-xs text-slate-400 mt-2">
-              {cat.totalTransactions} transacciones
-            </p>
-          </button>
+              )}
+              <p className="text-xs text-slate-400 mt-2">
+                {cat.totalTransactions} transacciones
+              </p>
+            </button>
+            <select
+              value={cat.priority ?? ""}
+              onChange={(e) => updatePriority(cat.id, e.target.value || null)}
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2 text-xs border rounded px-2 py-1 w-full text-slate-500"
+            >
+              <option value="">Sin etiqueta</option>
+              {PRIORITIES.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label} — {p.desc}
+                </option>
+              ))}
+            </select>
+          </div>
         ))}
       </div>
 

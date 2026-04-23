@@ -33,7 +33,10 @@ export default async function DashboardPage({
   let totalIngresos = 0;
   let totalGastos = 0;
   let deudaCredito = 0;
-  let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; spent: number }[] = [];
+  let facturadoMes = 0;
+  let pagadoMes = 0;
+  let creditLimit = 0;
+  let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; priority: string | null; spent: number }[] = [];
   let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; isCreditLine: boolean }[] = [];
   let accounts: { id: string; name: string }[] = [];
 
@@ -95,18 +98,30 @@ export default async function DashboardPage({
       .filter((t) => t.amount < 0 && !isCreditLineMovement(t.description))
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // === DEUDA LÍNEA DE CRÉDITO ===
-    // Préstamos tomados (positivos) - pagos hechos (negativos)
+    // === LÍNEA DE CRÉDITO / TARJETA ===
     const creditMovements = transactions.filter((t) =>
       isCreditLineMovement(t.description)
     );
-    const borrowed = creditMovements
+    // Facturado: préstamos tomados de la línea (positivos = dinero recibido del crédito)
+    facturadoMes = creditMovements
       .filter((t) => t.amount > 0)
       .reduce((sum, t) => sum + t.amount, 0);
-    const paid = creditMovements
+    // Pagado: pagos hechos a la línea (negativos = dinero devuelto al crédito)
+    pagadoMes = creditMovements
       .filter((t) => t.amount < 0)
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    deudaCredito = Math.max(0, borrowed - paid);
+    deudaCredito = Math.max(0, facturadoMes - pagadoMes);
+
+    // Obtener límite de crédito de la cuenta corriente
+    const ccAccount = bankAccounts.find((a) => a.creditLimit > 0);
+    if (ccAccount) {
+      creditLimit = ccAccount.creditLimit;
+      // Deuda real = límite - disponible (más preciso que solo movimientos del mes)
+      const deudaReal = ccAccount.creditLimit - ccAccount.available;
+      if (deudaReal > 0) {
+        deudaCredito = deudaReal;
+      }
+    }
 
     // === CATEGORÍAS (solo gastos reales) ===
     categoryData = categories.map((cat) => ({
@@ -115,6 +130,7 @@ export default async function DashboardPage({
       icon: cat.icon,
       color: cat.color,
       budgetLimit: cat.budgetLimit,
+      priority: cat.priority,
       spent: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
     }));
 
@@ -173,16 +189,55 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Deuda de crédito (solo si hay) */}
-      {deudaCredito > 0 && (
-        <div className="bg-orange-50 rounded-xl p-5 shadow-sm border border-orange-200">
-          <div className="flex items-center justify-between">
+      {/* Tarjeta de Crédito / Línea de Crédito */}
+      {(deudaCredito > 0 || facturadoMes > 0 || pagadoMes > 0 || creditLimit > 0) && (
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-xl p-5 shadow-sm text-white">
+          <p className="text-sm font-medium text-slate-300 mb-3">LÍNEA DE CRÉDITO</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div>
-              <p className="text-sm font-medium text-orange-700">Deuda Línea de Crédito</p>
-              <p className="text-2xl font-bold text-orange-600">{formatCLP(deudaCredito)}</p>
+              <p className="text-xs text-slate-400">Deuda Total</p>
+              <p className={`text-xl font-bold ${deudaCredito > 0 ? "text-orange-400" : "text-emerald-400"}`}>
+                {formatCLP(deudaCredito)}
+              </p>
             </div>
-            <p className="text-xs text-orange-500">Préstamos - Pagos del mes</p>
+            <div>
+              <p className="text-xs text-slate-400">Facturado este mes</p>
+              <p className="text-xl font-bold text-red-400">
+                {formatCLP(facturadoMes)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-400">Pagado este mes</p>
+              <p className="text-xl font-bold text-emerald-400">
+                {formatCLP(pagadoMes)}
+              </p>
+            </div>
+            {creditLimit > 0 && (
+              <div>
+                <p className="text-xs text-slate-400">Disponible</p>
+                <p className="text-xl font-bold text-blue-400">
+                  {formatCLP(creditLimit - deudaCredito)}
+                </p>
+              </div>
+            )}
           </div>
+          {creditLimit > 0 && (
+            <div className="mt-3">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
+                <span>Uso: {Math.round((deudaCredito / creditLimit) * 100)}%</span>
+                <span>Límite: {formatCLP(creditLimit)}</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full transition-all ${
+                    deudaCredito / creditLimit > 0.8 ? "bg-red-500" :
+                    deudaCredito / creditLimit > 0.5 ? "bg-orange-400" : "bg-emerald-400"
+                  }`}
+                  style={{ width: `${Math.min(100, (deudaCredito / creditLimit) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -232,6 +287,16 @@ export default async function DashboardPage({
                     style={{ backgroundColor: cat.color ?? "#6B7280" }}
                   />
                   <span className="text-sm font-medium">{cat.name}</span>
+                  {cat.priority && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      cat.priority === "esencial" ? "bg-red-100 text-red-700" :
+                      cat.priority === "necesario" ? "bg-orange-100 text-orange-700" :
+                      cat.priority === "prescindible" ? "bg-yellow-100 text-yellow-700" :
+                      "bg-slate-100 text-slate-600"
+                    }`}>
+                      {cat.priority.charAt(0).toUpperCase() + cat.priority.slice(1)}
+                    </span>
+                  )}
                   <span className="text-sm text-slate-500">{formatCLP(cat.spent)}</span>
                   {cat.budgetLimit && (
                     <span className={`text-xs ${cat.spent > cat.budgetLimit ? "text-red-500 font-semibold" : "text-slate-400"}`}>

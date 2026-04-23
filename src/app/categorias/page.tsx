@@ -61,6 +61,7 @@ export default async function CategoriasPage({
     icon: cat.icon,
     color: cat.color,
     budgetLimit: cat.budgetLimit,
+    priority: cat.priority,
     totalTransactions: cat._count.transactions,
     spentThisMonth: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
   }));
