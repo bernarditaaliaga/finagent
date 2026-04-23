@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { AhorroClient } from "@/components/ahorro-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function AhorroPage() {
   const goals = await prisma.savingsGoal.findMany({
     orderBy: { createdAt: "desc" },

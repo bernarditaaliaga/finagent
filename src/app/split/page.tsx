@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { SplitClient } from "@/components/split-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function SplitPage() {
   const groups = await prisma.splitGroup.findMany({
     include: {

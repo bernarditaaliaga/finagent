@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { formatCLP } from "@/lib/format";
 import { CategoriasClient } from "@/components/categorias-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function CategoriasPage() {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);

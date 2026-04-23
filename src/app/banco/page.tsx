@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { BancoClient } from "@/components/banco-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function BancoPage() {
   const bankLink = await prisma.bankLink.findFirst({
     orderBy: { createdAt: "desc" },
