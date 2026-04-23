@@ -19,14 +19,23 @@ interface Transaction {
   categoryColor: string | null;
 }
 
+interface Account {
+  id: string;
+  name: string;
+}
+
 export function DashboardClient({
   transactions,
   currentMonth,
   currentYear,
+  accounts = [],
+  currentAccountId = null,
 }: {
   transactions: Transaction[];
   currentMonth: number;
   currentYear: number;
+  accounts?: Account[];
+  currentAccountId?: string | null;
 }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
@@ -37,6 +46,14 @@ export function DashboardClient({
   const isCurrentMonth =
     currentMonth === now.getMonth() + 1 && currentYear === now.getFullYear();
 
+  function buildUrl(month: number, year: number, accountId?: string | null) {
+    const params = new URLSearchParams();
+    params.set("month", String(month));
+    params.set("year", String(year));
+    if (accountId) params.set("accountId", accountId);
+    return `/?${params.toString()}`;
+  }
+
   function goToPreviousMonth() {
     let m = currentMonth - 1;
     let y = currentYear;
@@ -44,7 +61,7 @@ export function DashboardClient({
       m = 12;
       y -= 1;
     }
-    router.push(`/?month=${m}&year=${y}`);
+    router.push(buildUrl(m, y, currentAccountId));
   }
 
   function goToNextMonth() {
@@ -55,7 +72,11 @@ export function DashboardClient({
       m = 1;
       y += 1;
     }
-    router.push(`/?month=${m}&year=${y}`);
+    router.push(buildUrl(m, y, currentAccountId));
+  }
+
+  function selectAccount(accountId: string | null) {
+    router.push(buildUrl(currentMonth, currentYear, accountId));
   }
 
   // Sincronizar con Fintoc
@@ -124,6 +145,35 @@ export function DashboardClient({
           <ChevronRight className="w-5 h-5" />
         </button>
       </div>
+
+      {/* Selector de cuenta */}
+      {accounts.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => selectAccount(null)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              !currentAccountId
+                ? "bg-blue-600 text-white"
+                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+            }`}
+          >
+            Todas
+          </button>
+          {accounts.map((acc) => (
+            <button
+              key={acc.id}
+              onClick={() => selectAccount(acc.id)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                currentAccountId === acc.id
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {acc.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Barra de acciones */}
       <div className="flex items-center gap-3">

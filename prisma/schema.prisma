@@ -17,6 +17,7 @@ model Transaction {
   amount      Float    // positivo = ingreso, negativo = gasto
   currency    String   @default("CLP")
   accountId   String?
+  accountName String?
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id])
   createdAt   DateTime @default(now())

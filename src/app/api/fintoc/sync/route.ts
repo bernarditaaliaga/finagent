@@ -74,17 +74,19 @@ export async function POST() {
           await prisma.transaction.upsert({
             where: { fintocId: movId },
             update: {
-              amount: movType === "debit" ? -Math.abs(amount) : Math.abs(amount),
+              amount,
               description,
               date: new Date(postDate),
+              accountName: (account.name as string) ?? null,
             },
             create: {
               fintocId: movId,
               date: new Date(postDate),
               description,
-              amount: movType === "debit" ? -Math.abs(amount) : Math.abs(amount),
+              amount,
               currency,
               accountId: account.id as string,
+              accountName: (account.name as string) ?? null,
             },
           });
           totalImported++;
@@ -98,20 +100,23 @@ export async function POST() {
 
       const demoTransactions = getDemoTransactions();
       for (const tx of demoTransactions) {
+        const txAmount = tx.type === "debit" ? -Math.abs(tx.amount) : Math.abs(tx.amount);
         await prisma.transaction.upsert({
           where: { fintocId: tx.id },
           update: {
-            amount: tx.type === "debit" ? -Math.abs(tx.amount) : Math.abs(tx.amount),
+            amount: txAmount,
             description: tx.description,
             date: tx.date,
+            accountName: "Cuenta Demo",
           },
           create: {
             fintocId: tx.id,
             date: tx.date,
             description: tx.description,
-            amount: tx.type === "debit" ? -Math.abs(tx.amount) : Math.abs(tx.amount),
+            amount: txAmount,
             currency: "CLP",
             accountId: "demo_account",
+            accountName: "Cuenta Demo",
           },
         });
         totalImported++;

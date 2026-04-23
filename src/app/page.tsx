@@ -17,6 +17,7 @@ export default async function DashboardPage({
   const currentYear = params.year
     ? parseInt(params.year as string)
     : now.getFullYear();
+  const currentAccountId = (params.accountId as string) || null;
   const startOfMonth = new Date(currentYear, currentMonth - 1, 1);
   const endOfMonth = new Date(currentYear, currentMonth, 1);
 
@@ -25,36 +26,48 @@ export default async function DashboardPage({
   let balance = 0;
   let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; spent: number }[] = [];
   let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null }[] = [];
+  let accounts: { id: string; name: string }[] = [];
 
   try {
-    const [transactions, categories, totalIncome, totalExpense] =
+    // Build base filter for date + optional account
+    const baseWhere = {
+      date: { gte: startOfMonth, lt: endOfMonth },
+      ...(currentAccountId ? { accountId: currentAccountId } : {}),
+    };
+
+    const [transactions, categories, totalIncome, totalExpense, distinctAccounts] =
       await Promise.all([
         prisma.transaction.findMany({
-          where: { date: { gte: startOfMonth, lt: endOfMonth } },
+          where: baseWhere,
           include: { category: true },
           orderBy: { date: "desc" },
         }),
         prisma.category.findMany({
           include: {
             transactions: {
-              where: { date: { gte: startOfMonth, lt: endOfMonth } },
+              where: baseWhere,
               select: { amount: true },
             },
           },
         }),
         prisma.transaction.aggregate({
           where: {
-            date: { gte: startOfMonth, lt: endOfMonth },
+            ...baseWhere,
             amount: { gt: 0 },
           },
           _sum: { amount: true },
         }),
         prisma.transaction.aggregate({
           where: {
-            date: { gte: startOfMonth, lt: endOfMonth },
+            ...baseWhere,
             amount: { lt: 0 },
           },
           _sum: { amount: true },
+        }),
+        prisma.transaction.findMany({
+          where: { accountId: { not: null } },
+          distinct: ["accountId"],
+          select: { accountId: true, accountName: true },
         }),
       ]);
 
@@ -79,6 +92,13 @@ export default async function DashboardPage({
       categoryName: t.category?.name ?? null,
       categoryColor: t.category?.color ?? null,
     }));
+
+    accounts = distinctAccounts
+      .filter((a) => a.accountId !== null)
+      .map((a) => ({
+        id: a.accountId as string,
+        name: a.accountName ?? a.accountId as string,
+      }));
   } catch (error) {
     console.error("Error loading dashboard data:", error);
   }
@@ -135,6 +155,8 @@ export default async function DashboardPage({
         transactions={serializedTransactions}
         currentMonth={currentMonth}
         currentYear={currentYear}
+        accounts={accounts}
+        currentAccountId={currentAccountId}
       />
     </div>
   );
