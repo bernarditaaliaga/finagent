@@ -1,20 +1,11 @@
+import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatCLP } from "@/lib/format";
 import { DashboardClient } from "@/components/dashboard-client";
 
 export const dynamic = "force-dynamic";
 
-// Detecta movimientos internos (traspasos entre cuentas propias, línea de crédito)
-function isInternalTransfer(description: string): boolean {
-  const d = description.toLowerCase();
-  return (
-    d.includes("traspaso") ||
-    d.includes("linea de credito") ||
-    d.includes("linea de cred") ||
-    d.includes("pago linea de cred")
-  );
-}
-
+// Detecta movimientos de línea de crédito (no son ingreso/gasto real, son deuda)
 function isCreditLineMovement(description: string): boolean {
   const d = description.toLowerCase();
   return d.includes("linea de credito") || d.includes("linea de cred");
@@ -43,7 +34,7 @@ export default async function DashboardPage({
   let totalGastos = 0;
   let deudaCredito = 0;
   let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; spent: number }[] = [];
-  let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; isInternal: boolean }[] = [];
+  let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; isCreditLine: boolean }[] = [];
   let accounts: { id: string; name: string }[] = [];
 
   try {
@@ -94,14 +85,14 @@ export default async function DashboardPage({
     const sumMovimientosMes = transactions.reduce((sum, t) => sum + t.amount, 0);
     saldoInicial = saldoActual - sumMovimientosMes;
 
-    // === INGRESOS REALES (excluyendo traspasos internos y línea de crédito) ===
+    // === INGRESOS REALES (excluyendo línea de crédito) ===
     totalIngresos = transactions
-      .filter((t) => t.amount > 0 && !isInternalTransfer(t.description))
+      .filter((t) => t.amount > 0 && !isCreditLineMovement(t.description))
       .reduce((sum, t) => sum + t.amount, 0);
 
-    // === GASTOS REALES (excluyendo traspasos internos y línea de crédito) ===
+    // === GASTOS REALES (excluyendo pagos de línea de crédito) ===
     totalGastos = transactions
-      .filter((t) => t.amount < 0 && !isInternalTransfer(t.description))
+      .filter((t) => t.amount < 0 && !isCreditLineMovement(t.description))
       .reduce((sum, t) => sum + t.amount, 0);
 
     // === DEUDA LÍNEA DE CRÉDITO ===
@@ -135,7 +126,7 @@ export default async function DashboardPage({
       amount: t.amount,
       categoryName: t.category?.name ?? null,
       categoryColor: t.category?.color ?? null,
-      isInternal: isInternalTransfer(t.description),
+      isCreditLine: isCreditLineMovement(t.description),
     }));
 
     accounts = distinctAccounts
@@ -164,14 +155,14 @@ export default async function DashboardPage({
           <p className="text-2xl font-bold text-emerald-600">
             +{formatCLP(totalIngresos)}
           </p>
-          <p className="text-xs text-slate-400 mt-1">sin traspasos</p>
+          <p className="text-xs text-slate-400 mt-1">sin linea de crédito</p>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
           <p className="text-sm text-slate-500">Gastos</p>
           <p className="text-2xl font-bold text-red-500">
             {formatCLP(totalGastos)}
           </p>
-          <p className="text-xs text-slate-400 mt-1">sin traspasos</p>
+          <p className="text-xs text-slate-400 mt-1">sin linea de crédito</p>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
           <p className="text-sm text-slate-500">Saldo Actual</p>
@@ -230,9 +221,10 @@ export default async function DashboardPage({
               .filter((cat) => cat.spent > 0)
               .sort((a, b) => b.spent - a.spent)
               .map((cat) => (
-                <div
+                <Link
                   key={cat.id}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full border"
+                  href={`/categorias?cat=${cat.id}`}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full border hover:shadow-md transition-shadow"
                   style={{ borderColor: cat.color ?? "#e2e8f0" }}
                 >
                   <div
@@ -246,7 +238,7 @@ export default async function DashboardPage({
                       / {formatCLP(cat.budgetLimit)}
                     </span>
                   )}
-                </div>
+                </Link>
               ))}
           </div>
         </div>

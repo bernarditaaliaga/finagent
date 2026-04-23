@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatCLP, formatDate } from "@/lib/format";
-import { Plus, Tag, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Tag, Sparkles, Trash2, ArrowLeft } from "lucide-react";
 
 interface Category {
   id: string;
@@ -46,15 +47,24 @@ export function CategoriasClient({
   categories: initialCategories,
   uncategorized,
   rules: initialRules = [],
+  selectedCategoryId = null,
+  selectedCategoryTransactions = [],
 }: {
   categories: Category[];
   uncategorized: Transaction[];
   rules?: Rule[];
+  selectedCategoryId?: string | null;
+  selectedCategoryTransactions?: Transaction[];
 }) {
+  const router = useRouter();
   const [categories, setCategories] = useState(initialCategories);
   const [showForm, setShowForm] = useState(false);
   const [rules, setRules] = useState(initialRules);
   const [autoCatLoading, setAutoCatLoading] = useState(false);
+
+  const selectedCategory = selectedCategoryId
+    ? categories.find((c) => c.id === selectedCategoryId)
+    : null;
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -89,6 +99,15 @@ export function CategoriasClient({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ categoryId }),
+    });
+    window.location.reload();
+  }
+
+  async function removeCategory(transactionId: string) {
+    await fetch(`/api/transactions/${transactionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ categoryId: null }),
     });
     window.location.reload();
   }
@@ -142,6 +161,90 @@ export function CategoriasClient({
     }
   }
 
+  // === VISTA DE CATEGORÍA SELECCIONADA ===
+  if (selectedCategory) {
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => router.push("/categorias")}
+          className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Volver a categorías
+        </button>
+
+        <div
+          className="bg-white rounded-xl p-5 shadow-sm border-l-4"
+          style={{ borderLeftColor: selectedCategory.color ?? "#6B7280" }}
+        >
+          <h2 className="text-xl font-bold text-slate-900">{selectedCategory.name}</h2>
+          <p className="text-2xl font-bold mt-1" style={{ color: selectedCategory.color ?? "#6B7280" }}>
+            {formatCLP(selectedCategory.spentThisMonth)}
+          </p>
+          {selectedCategory.budgetLimit && (
+            <p className="text-sm text-slate-500 mt-1">
+              de {formatCLP(selectedCategory.budgetLimit)} presupuestado
+            </p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="px-5 py-3 border-b border-slate-100">
+            <h3 className="font-semibold text-slate-900">
+              Transacciones ({selectedCategoryTransactions.length})
+            </h3>
+            <p className="text-xs text-slate-400">Cambia la categoría de cualquier transacción</p>
+          </div>
+          {selectedCategoryTransactions.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">
+              No hay transacciones este mes en esta categoría
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {selectedCategoryTransactions.map((t) => (
+                <div key={t.id} className="flex items-center justify-between px-5 py-3">
+                  <div>
+                    <p className="text-sm font-medium">{t.description}</p>
+                    <p className="text-xs text-slate-400">{formatDate(t.date)}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`text-sm font-semibold ${
+                        t.amount >= 0 ? "text-emerald-600" : "text-red-500"
+                      }`}
+                    >
+                      {formatCLP(t.amount)}
+                    </span>
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "__remove__") {
+                          removeCategory(t.id);
+                        } else if (val) {
+                          assignCategory(t.id, val);
+                        }
+                      }}
+                      className="text-xs border rounded px-2 py-1"
+                      defaultValue={selectedCategory.id}
+                    >
+                      <option value="__remove__">Sin categoría</option>
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // === VISTA PRINCIPAL DE CATEGORÍAS ===
   return (
     <div className="space-y-6">
       {/* Botones de acción */}
@@ -208,12 +311,13 @@ export function CategoriasClient({
         </form>
       )}
 
-      {/* Grid de categorías */}
+      {/* Grid de categorías - clickeables */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((cat) => (
-          <div
+          <button
             key={cat.id}
-            className="bg-white rounded-xl p-5 shadow-sm border-l-4"
+            onClick={() => router.push(`/categorias?cat=${cat.id}`)}
+            className="bg-white rounded-xl p-5 shadow-sm border-l-4 text-left hover:shadow-md transition-shadow cursor-pointer"
             style={{ borderLeftColor: cat.color ?? "#6B7280" }}
           >
             <h3 className="font-semibold text-slate-900">{cat.name}</h3>
@@ -241,7 +345,7 @@ export function CategoriasClient({
             <p className="text-xs text-slate-400 mt-2">
               {cat.totalTransactions} transacciones
             </p>
-          </div>
+          </button>
         ))}
       </div>
 

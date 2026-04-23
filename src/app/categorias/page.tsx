@@ -3,7 +3,14 @@ import { CategoriasClient } from "@/components/categorias-client";
 
 export const dynamic = "force-dynamic";
 
-export default async function CategoriasPage() {
+export default async function CategoriasPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const params = await searchParams;
+  const selectedCatId = (params.cat as string) || null;
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -24,6 +31,24 @@ export default async function CategoriasPage() {
     orderBy: { date: "desc" },
     take: 20,
   });
+
+  // Si hay categoría seleccionada, cargar sus transacciones del mes
+  let selectedCatTransactions: { id: string; date: string; description: string; amount: number }[] = [];
+  if (selectedCatId) {
+    const txns = await prisma.transaction.findMany({
+      where: {
+        categoryId: selectedCatId,
+        date: { gte: startOfMonth, lt: endOfMonth },
+      },
+      orderBy: { date: "desc" },
+    });
+    selectedCatTransactions = txns.map((t) => ({
+      id: t.id,
+      date: t.date.toISOString(),
+      description: t.description,
+      amount: t.amount,
+    }));
+  }
 
   const rulesData = await prisma.categoryRule.findMany({
     include: { category: { select: { name: true } } },
@@ -62,7 +87,13 @@ export default async function CategoriasPage() {
         <p className="text-slate-500">Organiza tus gastos en categorias personalizadas</p>
       </div>
 
-      <CategoriasClient categories={categoryData} uncategorized={uncategorizedData} rules={rules} />
+      <CategoriasClient
+        categories={categoryData}
+        uncategorized={uncategorizedData}
+        rules={rules}
+        selectedCategoryId={selectedCatId}
+        selectedCategoryTransactions={selectedCatTransactions}
+      />
     </div>
   );
 }

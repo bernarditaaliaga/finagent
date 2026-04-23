@@ -17,7 +17,7 @@ interface Transaction {
   amount: number;
   categoryName: string | null;
   categoryColor: string | null;
-  isInternal?: boolean;
+  isCreditLine?: boolean;
 }
 
 interface Account {
@@ -265,7 +265,7 @@ export function DashboardClient({
             {transactions.map((t) => (
               <div
                 key={t.id}
-                className={`flex items-center justify-between px-5 py-3 hover:bg-slate-50 ${t.isInternal ? "opacity-50" : ""}`}
+                className={`flex items-center justify-between px-5 py-3 hover:bg-slate-50 ${t.isCreditLine ? "opacity-50" : ""}`}
               >
                 <div className="flex items-center gap-3">
                   {t.categoryColor && (
@@ -281,13 +281,13 @@ export function DashboardClient({
                     <p className="text-xs text-slate-400">
                       {formatDate(t.date)}
                       {t.categoryName && ` · ${t.categoryName}`}
-                      {t.isInternal && " · Mov. interno"}
+                      {t.isCreditLine && " · Línea de crédito"}
                     </p>
                   </div>
                 </div>
                 <span
                   className={`text-sm font-semibold ${
-                    t.isInternal
+                    t.isCreditLine
                       ? "text-slate-400"
                       : t.amount >= 0
                       ? "text-emerald-600"
