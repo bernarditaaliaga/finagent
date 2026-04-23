@@ -62,6 +62,7 @@ export function BancoClient({
         product: "movements",
         publicKey: fintocPublicKey,
         country: "cl",
+        webhookUrl: "https://finagent-eight.vercel.app/api/fintoc/webhook",
         onSuccess: async () => {
           // El widget creó el link en Fintoc automáticamente
           // Ahora le decimos al backend que busque los links y guarde el más reciente
