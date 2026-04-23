@@ -29,11 +29,11 @@ export default async function CategoriasPage({
   const uncategorized = await prisma.transaction.findMany({
     where: { categoryId: null },
     orderBy: { date: "desc" },
-    take: 20,
+    take: 50,
   });
 
   // Si hay categoría seleccionada, cargar sus transacciones del mes
-  let selectedCatTransactions: { id: string; date: string; description: string; amount: number }[] = [];
+  let selectedCatTransactions: { id: string; date: string; description: string; amount: number; accountName: string | null }[] = [];
   if (selectedCatId) {
     const txns = await prisma.transaction.findMany({
       where: {
@@ -47,6 +47,7 @@ export default async function CategoriasPage({
       date: t.date.toISOString(),
       description: t.description,
       amount: t.amount,
+      accountName: t.accountName ?? null,
     }));
   }
 
@@ -71,6 +72,7 @@ export default async function CategoriasPage({
     date: t.date.toISOString(),
     description: t.description,
     amount: t.amount,
+    accountName: t.accountName ?? null,
   }));
 
   const rules = rulesData.map((r) => ({

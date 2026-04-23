@@ -28,6 +28,7 @@ interface Transaction {
   date: string;
   description: string;
   amount: number;
+  accountName?: string | null;
 }
 
 interface Rule {
@@ -228,6 +229,9 @@ export function CategoriasClient({
                   <div>
                     <p className="text-sm font-medium">{t.description}</p>
                     <p className="text-xs text-slate-400">{formatDate(t.date)}</p>
+                    {t.accountName && (
+                      <p className="text-[11px] text-slate-300">{t.accountName}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span

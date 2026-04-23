@@ -36,6 +36,7 @@ model Category {
   transactions Transaction[]
   fixedExpenses FixedExpense[]
   rules        CategoryRule[]
+  budgets      CategoryBudget[]
   createdAt    DateTime      @default(now())
 }
 
@@ -76,6 +77,34 @@ model SavingsGoal {
   deadline      DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ===== PLAN DE AHORRO MENSUAL =====
+model SavingsPlan {
+  id              String          @id @default(cuid())
+  month           Int             // mes (1-12)
+  year            Int             // año
+  savingsTarget   Float           // cuánto quiere ahorrar
+  totalIncome     Float           // ingresos fijos calculados
+  totalFixed      Float           // gastos fijos calculados
+  isActive        Boolean         @default(true)
+  budgets         CategoryBudget[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([month, year])
+}
+
+model CategoryBudget {
+  id            String      @id @default(cuid())
+  planId        String
+  plan          SavingsPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id])
+  budgetAmount  Float       // máximo a gastar en esta categoría
+  createdAt     DateTime    @default(now())
+
+  @@unique([planId, categoryId])
 }
 
 // ===== CONEXIÓN BANCARIA (Fintoc) =====

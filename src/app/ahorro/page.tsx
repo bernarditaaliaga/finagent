@@ -4,11 +4,31 @@ import { AhorroClient } from "@/components/ahorro-client";
 export const dynamic = "force-dynamic";
 
 export default async function AhorroPage() {
-  const goals = await prisma.savingsGoal.findMany({
-    orderBy: { createdAt: "desc" },
-  });
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const serialized = goals.map((g) => ({
+  const [goals, activePlan, categories] = await Promise.all([
+    prisma.savingsGoal.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.savingsPlan.findUnique({
+      where: { month_year: { month: now.getMonth() + 1, year: now.getFullYear() } },
+      include: {
+        budgets: {
+          include: { category: true },
+        },
+      },
+    }),
+    prisma.category.findMany({
+      include: {
+        transactions: {
+          where: { date: { gte: startOfMonth, lt: endOfMonth } },
+          select: { amount: true },
+        },
+      },
+    }),
+  ]);
+
+  const serializedGoals = goals.map((g) => ({
     id: g.id,
     name: g.name,
     targetAmount: g.targetAmount,
@@ -16,13 +36,38 @@ export default async function AhorroPage() {
     deadline: g.deadline?.toISOString() ?? null,
   }));
 
+  const serializedPlan = activePlan
+    ? {
+        id: activePlan.id,
+        month: activePlan.month,
+        year: activePlan.year,
+        savingsTarget: activePlan.savingsTarget,
+        totalIncome: activePlan.totalIncome,
+        totalFixed: activePlan.totalFixed,
+        budgets: activePlan.budgets.map((b) => ({
+          categoryId: b.categoryId,
+          categoryName: b.category.name,
+          categoryColor: b.category.color,
+          budgetAmount: b.budgetAmount,
+          currentSpent: categories
+            .find((c) => c.id === b.categoryId)
+            ?.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0) ?? 0,
+        })),
+      }
+    : null;
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Planes de Ahorro</h1>
-        <p className="text-slate-500">Establece metas y sigue tu progreso</p>
+        <h1 className="text-2xl font-bold text-slate-900">Ahorro</h1>
+        <p className="text-slate-500">Plan de ahorro mensual y metas a largo plazo</p>
       </div>
-      <AhorroClient goals={serialized} />
+      <AhorroClient
+        goals={serializedGoals}
+        activePlan={serializedPlan}
+        currentMonth={now.getMonth() + 1}
+        currentYear={now.getFullYear()}
+      />
     </div>
   );
 }

@@ -17,6 +17,7 @@ interface Transaction {
   amount: number;
   categoryName: string | null;
   categoryColor: string | null;
+  accountName: string | null;
   isCreditLine?: boolean;
 }
 
@@ -283,6 +284,9 @@ export function DashboardClient({
                       {t.categoryName && ` · ${t.categoryName}`}
                       {t.isCreditLine && " · Línea de crédito"}
                     </p>
+                    {t.accountName && (
+                      <p className="text-[11px] text-slate-300">{t.accountName}</p>
+                    )}
                   </div>
                 </div>
                 <span

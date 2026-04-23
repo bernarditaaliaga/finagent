@@ -35,7 +35,7 @@ export default async function DashboardPage({
   let creditCards: { id: string; name: string; lastFourDigits: string | null; cupoTotal: number; deudaActual: number; facturadoMes: number; pagadoMes: number; billingCloseDay: number }[] = [];
   let estimacionProximoMes = 0;
   let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; priority: string | null; spent: number }[] = [];
-  let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; isCreditLine: boolean }[] = [];
+  let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null; accountName: string | null; isCreditLine: boolean }[] = [];
   let accounts: { id: string; name: string }[] = [];
 
   try {
@@ -162,6 +162,7 @@ export default async function DashboardPage({
       amount: t.amount,
       categoryName: t.category?.name ?? null,
       categoryColor: t.category?.color ?? null,
+      accountName: t.accountName ?? null,
       isCreditLine: isCreditLineMovement(t.description),
     }));
 
