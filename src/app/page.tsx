@@ -2,64 +2,76 @@ import { prisma } from "@/lib/db";
 import { formatCLP } from "@/lib/format";
 import { DashboardClient } from "@/components/dashboard-client";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const [transactions, categories, totalIncome, totalExpense] =
-    await Promise.all([
-      prisma.transaction.findMany({
-        where: { date: { gte: startOfMonth, lt: endOfMonth } },
-        include: { category: true },
-        orderBy: { date: "desc" },
-        take: 50,
-      }),
-      prisma.category.findMany({
-        include: {
-          transactions: {
-            where: { date: { gte: startOfMonth, lt: endOfMonth } },
-            select: { amount: true },
+  let income = 0;
+  let expense = 0;
+  let balance = 0;
+  let categoryData: { id: string; name: string; icon: string | null; color: string | null; budgetLimit: number | null; spent: number }[] = [];
+  let serializedTransactions: { id: string; date: string; description: string; amount: number; categoryName: string | null; categoryColor: string | null }[] = [];
+
+  try {
+    const [transactions, categories, totalIncome, totalExpense] =
+      await Promise.all([
+        prisma.transaction.findMany({
+          where: { date: { gte: startOfMonth, lt: endOfMonth } },
+          include: { category: true },
+          orderBy: { date: "desc" },
+          take: 50,
+        }),
+        prisma.category.findMany({
+          include: {
+            transactions: {
+              where: { date: { gte: startOfMonth, lt: endOfMonth } },
+              select: { amount: true },
+            },
           },
-        },
-      }),
-      prisma.transaction.aggregate({
-        where: {
-          date: { gte: startOfMonth, lt: endOfMonth },
-          amount: { gt: 0 },
-        },
-        _sum: { amount: true },
-      }),
-      prisma.transaction.aggregate({
-        where: {
-          date: { gte: startOfMonth, lt: endOfMonth },
-          amount: { lt: 0 },
-        },
-        _sum: { amount: true },
-      }),
-    ]);
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            date: { gte: startOfMonth, lt: endOfMonth },
+            amount: { gt: 0 },
+          },
+          _sum: { amount: true },
+        }),
+        prisma.transaction.aggregate({
+          where: {
+            date: { gte: startOfMonth, lt: endOfMonth },
+            amount: { lt: 0 },
+          },
+          _sum: { amount: true },
+        }),
+      ]);
 
-  const income = totalIncome._sum.amount ?? 0;
-  const expense = totalExpense._sum.amount ?? 0;
-  const balance = income + expense;
+    income = totalIncome._sum.amount ?? 0;
+    expense = totalExpense._sum.amount ?? 0;
+    balance = income + expense;
 
-  const categoryData = categories.map((cat) => ({
-    id: cat.id,
-    name: cat.name,
-    icon: cat.icon,
-    color: cat.color,
-    budgetLimit: cat.budgetLimit,
-    spent: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
-  }));
+    categoryData = categories.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      icon: cat.icon,
+      color: cat.color,
+      budgetLimit: cat.budgetLimit,
+      spent: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
+    }));
 
-  const serializedTransactions = transactions.map((t) => ({
-    id: t.id,
-    date: t.date.toISOString(),
-    description: t.description,
-    amount: t.amount,
-    categoryName: t.category?.name ?? null,
-    categoryColor: t.category?.color ?? null,
-  }));
+    serializedTransactions = transactions.map((t) => ({
+      id: t.id,
+      date: t.date.toISOString(),
+      description: t.description,
+      amount: t.amount,
+      categoryName: t.category?.name ?? null,
+      categoryColor: t.category?.color ?? null,
+    }));
+  } catch (error) {
+    console.error("Error loading dashboard data:", error);
+  }
 
   const monthName = new Intl.DateTimeFormat("es-CL", { month: "long" }).format(now);
 
