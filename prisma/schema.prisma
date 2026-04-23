@@ -87,6 +87,20 @@ model BankLink {
   createdAt   DateTime @default(now())
 }
 
+// ===== CUENTAS BANCARIAS =====
+model BankAccount {
+  id          String   @id @default(cuid())
+  fintocId    String   @unique // ID de la cuenta en Fintoc
+  name        String   // "Cuenta Vista", "Cuenta Corriente"
+  type        String   // "sight_account", "checking_account"
+  number      String   // número de cuenta
+  available   Float    @default(0)
+  current     Float    @default(0)
+  creditLimit Float    @default(0) // límite de crédito (0 si no tiene)
+  currency    String   @default("CLP")
+  updatedAt   DateTime @updatedAt
+}
+
 // ===== TRICOUNT / SPLIT DE GASTOS =====
 model SplitGroup {
   id        String       @id @default(cuid())

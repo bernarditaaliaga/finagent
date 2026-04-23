@@ -56,3 +56,27 @@ export async function getAccountsAndMovements(linkToken: string) {
 
   return result;
 }
+
+// Obtiene balances de todas las cuentas
+export async function getAccountBalances(linkToken: string) {
+  const headers = getHeaders();
+  const accRes = await fetch(
+    `${FINTOC_BASE_URL}/accounts?link_token=${linkToken}`,
+    { headers }
+  );
+  if (!accRes.ok) return [];
+  const accounts = await accRes.json();
+  return accounts.map((a: Record<string, unknown>) => {
+    const balance = a.balance as Record<string, number>;
+    return {
+      id: a.id as string,
+      name: a.name as string,
+      type: a.type as string,
+      number: a.number as string,
+      available: balance.available,
+      current: balance.current,
+      limit: balance.limit,
+      currency: (a.currency as string) ?? "CLP",
+    };
+  });
+}
