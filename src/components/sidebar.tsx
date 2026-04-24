@@ -11,12 +11,14 @@ import {
   Users,
   Landmark,
   GraduationCap,
+  CreditCard,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Categorias", href: "/categorias", icon: Tags },
   { name: "Gastos Fijos", href: "/gastos-fijos", icon: CalendarClock },
+  { name: "Tarjeta Credito", href: "/tarjeta-credito", icon: CreditCard },
   { name: "Ahorro", href: "/ahorro", icon: PiggyBank },
   { name: "Indicadores", href: "/indicadores", icon: TrendingUp },
   { name: "Dividir Gastos", href: "/split", icon: Users },

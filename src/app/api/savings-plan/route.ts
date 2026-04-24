@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
     const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
 
-    const [categories, fixedExpenses, thisMonthTxns, bankAccounts] = await Promise.all([
+    const [categories, fixedExpenses, thisMonthTxns, bankAccounts, ccExpenses] = await Promise.all([
       prisma.category.findMany({
         include: {
           transactions: {
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
         select: { amount: true, description: true, date: true },
       }),
       prisma.bankAccount.findMany(),
+      prisma.creditCardExpense.findMany(),
     ]);
 
     // Ingresos reales del mes (excluyendo línea de crédito)
@@ -87,7 +88,29 @@ export async function POST(request: Request) {
       })
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
-    const totalFixedExpenses = fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalFixedExpenses = fixedExpenses
+      .filter((e) => e.type !== "income")
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    // Cuotas TC del mes actual
+    const ccCuotasThisMonth = ccExpenses
+      .filter((exp) => {
+        const start = exp.billingStartYear * 12 + exp.billingStartMonth;
+        const end = start + exp.installments - 1;
+        const target = currentYear * 12 + currentMonth;
+        return target >= start && target <= end;
+      })
+      .reduce((sum, exp) => sum + exp.installmentAmount, 0);
+
+    // Cuotas TC del próximo mes
+    const ccCuotasNextMonth = ccExpenses
+      .filter((exp) => {
+        const start = exp.billingStartYear * 12 + exp.billingStartMonth;
+        const end = start + exp.installments - 1;
+        const target = nextYear * 12 + nextMonth;
+        return target >= start && target <= end;
+      })
+      .reduce((sum, exp) => sum + exp.installmentAmount, 0);
 
     // Saldo actual disponible
     const saldoActual = bankAccounts
@@ -112,6 +135,7 @@ export async function POST(request: Request) {
     if (!apiKey || apiKey.includes("tu_key_aqui")) {
       return generateBasicPlan({
         savingsTarget, realIncome, totalFixedExpenses,
+        ccCuotas: ccCuotasThisMonth, ccCuotasNextMonth,
         spentSoFar, saldoActual, currentDay, daysRemaining,
         currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
       });
@@ -127,6 +151,8 @@ Quedan ${daysRemaining} días del mes.
 SITUACIÓN ACTUAL DEL MES:
 - Ingresos recibidos este mes: $${realIncome.toLocaleString("es-CL")}
 - Gastos fijos mensuales: $${totalFixedExpenses.toLocaleString("es-CL")}
+- Cuotas tarjeta de crédito este mes: $${ccCuotasThisMonth.toLocaleString("es-CL")}
+- Cuotas tarjeta de crédito próximo mes: $${ccCuotasNextMonth.toLocaleString("es-CL")}
 - Ya gastado este mes (variable): $${spentSoFar.toLocaleString("es-CL")}
 - Saldo disponible hoy en cuentas: $${saldoActual.toLocaleString("es-CL")}
 
@@ -182,6 +208,8 @@ Solo JSON, sin texto adicional.`;
         ...planData,
         income: realIncome,
         fixedExpenses: totalFixedExpenses,
+        ccCuotasThisMonth,
+        ccCuotasNextMonth,
         spentSoFar,
         saldoActual,
         savingsTarget,
@@ -197,6 +225,7 @@ Solo JSON, sin texto adicional.`;
       // Fallback al plan básico si Claude falla
       return generateBasicPlan({
         savingsTarget, realIncome, totalFixedExpenses,
+        ccCuotas: ccCuotasThisMonth, ccCuotasNextMonth,
         spentSoFar, saldoActual, currentDay, daysRemaining,
         currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
       });
@@ -265,15 +294,17 @@ export async function PUT(request: Request) {
 // Plan básico sin Claude API
 function generateBasicPlan({
   savingsTarget, realIncome, totalFixedExpenses,
+  ccCuotas, ccCuotasNextMonth,
   spentSoFar, saldoActual, currentDay, daysRemaining,
   currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
 }: {
   savingsTarget: number; realIncome: number; totalFixedExpenses: number;
+  ccCuotas: number; ccCuotasNextMonth: number;
   spentSoFar: number; saldoActual: number; currentDay: number; daysRemaining: number;
   currentMonth: number; currentYear: number; nextMonth: number; nextYear: number;
   categoryInfo: { id: string; name: string; priority: string; budgetLimit: number | null; currentSpent: number }[];
 }) {
-  const maxMonthly = realIncome - totalFixedExpenses;
+  const maxMonthly = realIncome - totalFixedExpenses - ccCuotas;
   const remainingThisMonth = saldoActual - savingsTarget;
 
   // ¿Es viable como plan mensual?
@@ -286,7 +317,7 @@ function generateBasicPlan({
   const nextMonthFeasible = !neverFeasible;
 
   // Presupuestos
-  const availableForSpending = realIncome - totalFixedExpenses - savingsTarget;
+  const availableForSpending = realIncome - totalFixedExpenses - ccCuotas - savingsTarget;
   const totalCurrentSpent = categoryInfo.reduce((sum, c) => sum + c.currentSpent, 0);
   const reductionNeeded = Math.max(0, totalCurrentSpent - availableForSpending);
 
@@ -311,7 +342,7 @@ function generateBasicPlan({
   let nextMonthMessage: string;
 
   if (neverFeasible) {
-    thisMonthMessage = `Con ingresos de $${realIncome.toLocaleString("es-CL")} y gastos fijos de $${totalFixedExpenses.toLocaleString("es-CL")}, no es posible ahorrar $${savingsTarget.toLocaleString("es-CL")} en ningún mes.`;
+    thisMonthMessage = `Con ingresos de $${realIncome.toLocaleString("es-CL")}, gastos fijos de $${totalFixedExpenses.toLocaleString("es-CL")} y cuotas TC de $${ccCuotas.toLocaleString("es-CL")}, no es posible ahorrar $${savingsTarget.toLocaleString("es-CL")}.`;
     nextMonthMessage = thisMonthMessage;
   } else if (!thisMonthFeasible) {
     thisMonthMessage = `Ya estamos a día ${currentDay} y llevas $${spentSoFar.toLocaleString("es-CL")} gastados. No es realista empezar este mes.`;
@@ -333,6 +364,8 @@ function generateBasicPlan({
     budgets,
     income: realIncome,
     fixedExpenses: totalFixedExpenses,
+    ccCuotasThisMonth: ccCuotas,
+    ccCuotasNextMonth,
     spentSoFar,
     saldoActual,
     savingsTarget,

@@ -37,6 +37,7 @@ model Category {
   fixedExpenses FixedExpense[]
   rules        CategoryRule[]
   budgets      CategoryBudget[]
+  creditCardExpenses CreditCardExpense[]
   createdAt    DateTime      @default(now())
 }
 
@@ -146,8 +147,27 @@ model CreditCard {
   billingCloseDay Int      @default(26) // día de cierre de facturación
   isTitular       Boolean  @default(true) // true = titular, false = adicional
   fintocId        String?  @unique // ID de Fintoc (si viene de ahí)
+  expenses        CreditCardExpense[]
   updatedAt       DateTime @updatedAt
   createdAt       DateTime @default(now())
+}
+
+// ===== COMPRAS CON TARJETA DE CRÉDITO =====
+// Cada compra individual con TC, con soporte de cuotas
+model CreditCardExpense {
+  id            String    @id @default(cuid())
+  description   String    // "Falabella", "Spotify"
+  totalAmount   Float     // monto total de la compra
+  installments  Int       @default(1) // número de cuotas
+  installmentAmount Float // monto por cuota (totalAmount / installments)
+  purchaseDate  DateTime  // fecha de la compra
+  billingStartMonth Int   // mes en que empieza a facturarse (1-12)
+  billingStartYear  Int   // año en que empieza a facturarse
+  categoryId    String?
+  category      Category? @relation(fields: [categoryId], references: [id])
+  creditCardId  String?
+  creditCard    CreditCard? @relation(fields: [creditCardId], references: [id])
+  createdAt     DateTime  @default(now())
 }
 
 // ===== TRICOUNT / SPLIT DE GASTOS =====
