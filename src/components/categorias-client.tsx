@@ -538,13 +538,13 @@ export function CategoriasClient({
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button
+                    {cat.name !== "Gastos Fijos" && <button
                       onClick={() => deleteCategory(cat.id)}
                       className="text-slate-300 hover:text-red-500 p-1 transition-colors"
                       title="Eliminar"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </button>}
                   </div>
                 </div>
                 <button

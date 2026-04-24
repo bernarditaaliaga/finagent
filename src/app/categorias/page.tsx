@@ -60,7 +60,6 @@ export default async function CategoriasPage({
 
   const categoryData = categories.map((cat) => {
     const txSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    // Para "Gastos Fijos", mostrar el total de gastos fijos + transacciones categorizadas ahí
     const isGastosFijos = cat.name === "Gastos Fijos";
     return {
       id: cat.id,
@@ -71,7 +70,8 @@ export default async function CategoriasPage({
       priority: cat.priority,
       frequency: cat.frequency,
       totalTransactions: cat._count.transactions,
-      spentThisMonth: isGastosFijos ? txSpent + totalFixedExpenses : txSpent,
+      // "Gastos Fijos" muestra el total definido en gastos fijos, no las transacciones
+      spentThisMonth: isGastosFijos ? totalFixedExpenses : txSpent,
     };
   });
 
