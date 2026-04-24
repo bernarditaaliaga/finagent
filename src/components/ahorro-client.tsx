@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { formatCLP } from "@/lib/format";
-import { Plus, PiggyBank, Target, Sparkles, Check, AlertTriangle, X, Trash2 } from "lucide-react";
+import {
+  Plus, PiggyBank, Target, Sparkles, Check, AlertTriangle, X,
+  Trash2, Power, PowerOff, ChevronDown, ChevronUp, Brain,
+} from "lucide-react";
 
 interface SavingsGoal {
   id: string;
@@ -27,25 +30,29 @@ interface ActivePlan {
   savingsTarget: number;
   totalIncome: number;
   totalFixed: number;
+  reasoning: string | null;
+  isActive: boolean;
   budgets: BudgetItem[];
 }
 
 interface PlanResult {
+  reasoning: string;
   thisMonthFeasible: boolean;
-  thisMonthMessage: string;
   nextMonthFeasible: boolean;
-  nextMonthMessage: string;
   neverFeasible: boolean;
   suggestedTarget: number | null;
   startMonth: number;
   startYear: number;
+  startReason: string;
   budgets: { categoryId: string; categoryName: string; budgetAmount: number; recommendation?: string }[];
-  income: number;
-  totalFixedIncome?: number;
+  totalFixedIncome: number;
   fixedExpenses: number;
-  pendingExpenses?: number;
-  ccCuotasThisMonth?: number;
-  ccCuotasNextMonth?: number;
+  pendingExpenses: number;
+  paidExpenses: number;
+  pendingIncome: number;
+  paidIncome: number;
+  ccCuotasThisMonth: number;
+  ccCuotasNextMonth: number;
   spentSoFar: number;
   saldoActual: number;
   savingsTarget: number;
@@ -64,7 +71,7 @@ const MONTH_NAMES = [
 
 export function AhorroClient({
   goals: initialGoals,
-  activePlan,
+  activePlan: initialPlan,
   currentMonth,
   currentYear,
 }: {
@@ -74,15 +81,19 @@ export function AhorroClient({
   currentYear: number;
 }) {
   const [goals, setGoals] = useState(initialGoals);
+  const [activePlan, setActivePlan] = useState(initialPlan);
   const [showGoalForm, setShowGoalForm] = useState(false);
-  const [showPlanForm, setShowPlanForm] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
   const [planResult, setPlanResult] = useState<PlanResult | null>(null);
   const [planSaved, setPlanSaved] = useState(false);
+  const [showReasoning, setShowReasoning] = useState(true);
+  const [showPlanReasoning, setShowPlanReasoning] = useState(false);
+  const [toggling, setToggling] = useState(false);
 
-  // Calcular ahorro total acumulado en metas
   const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
   const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+
+  // --- Handlers ---
 
   async function handleCreateGoal(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -114,6 +125,7 @@ export function AhorroClient({
     setPlanLoading(true);
     setPlanResult(null);
     setPlanSaved(false);
+    setShowReasoning(true);
     try {
       const res = await fetch("/api/savings-plan", {
         method: "POST",
@@ -142,14 +154,37 @@ export function AhorroClient({
         month,
         year,
         savingsTarget: planResult.savingsTarget,
-        income: planResult.income,
+        totalFixedIncome: planResult.totalFixedIncome,
         fixedExpenses: planResult.fixedExpenses,
         budgets: planResult.budgets,
+        reasoning: planResult.reasoning,
       }),
     });
     if (res.ok) {
       setPlanSaved(true);
       setTimeout(() => window.location.reload(), 1000);
+    }
+  }
+
+  async function togglePlan() {
+    if (!activePlan) return;
+    setToggling(true);
+    const res = await fetch("/api/savings-plan", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planId: activePlan.id, isActive: !activePlan.isActive }),
+    });
+    if (res.ok) {
+      setActivePlan({ ...activePlan, isActive: !activePlan.isActive });
+    }
+    setToggling(false);
+  }
+
+  async function deletePlan() {
+    if (!activePlan || !confirm("¿Eliminar este plan de ahorro? Los límites por categoría se resetearán.")) return;
+    const res = await fetch(`/api/savings-plan?id=${activePlan.id}`, { method: "DELETE" });
+    if (res.ok) {
+      setActivePlan(null);
     }
   }
 
@@ -170,7 +205,9 @@ export function AhorroClient({
             {activePlan ? formatCLP(activePlan.savingsTarget) : "$0"}
           </p>
           <p className="text-xs text-slate-400 mt-1">
-            {activePlan ? `${MONTH_NAMES[activePlan.month - 1]} ${activePlan.year}` : "Sin plan activo"}
+            {activePlan
+              ? `${MONTH_NAMES[activePlan.month - 1]} ${activePlan.year}${!activePlan.isActive ? " (desactivado)" : ""}`
+              : "Sin plan activo"}
           </p>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
@@ -188,66 +225,336 @@ export function AhorroClient({
 
       {/* Plan de Ahorro Activo */}
       {activePlan && (
-        <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
-          <div className="flex items-center gap-3 mb-4">
-            <Target className="w-6 h-6" />
-            <div>
-              <h2 className="text-lg font-bold">
-                Plan de Ahorro — {MONTH_NAMES[activePlan.month - 1]} {activePlan.year}
-              </h2>
-              <p className="text-sm text-purple-200">
-                Meta: {formatCLP(activePlan.savingsTarget)} al mes
-              </p>
+        <div className={`rounded-xl p-6 ${activePlan.isActive ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white" : "bg-slate-200 text-slate-600"}`}>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Target className="w-6 h-6" />
+              <div>
+                <h2 className="text-lg font-bold">
+                  Plan de Ahorro — {MONTH_NAMES[activePlan.month - 1]} {activePlan.year}
+                </h2>
+                <p className={`text-sm ${activePlan.isActive ? "text-purple-200" : "text-slate-500"}`}>
+                  Meta: {formatCLP(activePlan.savingsTarget)} al mes
+                  {!activePlan.isActive && " · Desactivado"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={togglePlan}
+                disabled={toggling}
+                className={`p-2 rounded-lg transition-colors ${
+                  activePlan.isActive
+                    ? "bg-white/20 hover:bg-white/30 text-white"
+                    : "bg-emerald-100 hover:bg-emerald-200 text-emerald-700"
+                } disabled:opacity-50`}
+                title={activePlan.isActive ? "Desactivar plan" : "Activar plan"}
+              >
+                {activePlan.isActive ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={deletePlan}
+                className={`p-2 rounded-lg transition-colors ${
+                  activePlan.isActive
+                    ? "bg-white/20 hover:bg-red-400/50 text-white"
+                    : "bg-red-100 hover:bg-red-200 text-red-600"
+                }`}
+                title="Eliminar plan"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4 text-center">
-            <div className="bg-white/10 rounded-lg p-3">
-              <p className="text-xs text-purple-200">Ingresos</p>
+            <div className={`rounded-lg p-3 ${activePlan.isActive ? "bg-white/10" : "bg-white/50"}`}>
+              <p className={`text-xs ${activePlan.isActive ? "text-purple-200" : "text-slate-500"}`}>Ingresos</p>
               <p className="text-lg font-bold">{formatCLP(activePlan.totalIncome)}</p>
             </div>
-            <div className="bg-white/10 rounded-lg p-3">
-              <p className="text-xs text-purple-200">Gastos Fijos</p>
+            <div className={`rounded-lg p-3 ${activePlan.isActive ? "bg-white/10" : "bg-white/50"}`}>
+              <p className={`text-xs ${activePlan.isActive ? "text-purple-200" : "text-slate-500"}`}>Gastos Fijos</p>
               <p className="text-lg font-bold">{formatCLP(activePlan.totalFixed)}</p>
             </div>
-            <div className="bg-white/10 rounded-lg p-3">
-              <p className="text-xs text-purple-200">Ahorro</p>
+            <div className={`rounded-lg p-3 ${activePlan.isActive ? "bg-white/10" : "bg-white/50"}`}>
+              <p className={`text-xs ${activePlan.isActive ? "text-purple-200" : "text-slate-500"}`}>Ahorro</p>
               <p className="text-lg font-bold">{formatCLP(activePlan.savingsTarget)}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {activePlan.budgets.map((b) => {
-              const percent = b.budgetAmount > 0 ? (b.currentSpent / b.budgetAmount) * 100 : 0;
-              const overBudget = b.currentSpent > b.budgetAmount;
-              return (
-                <div key={b.categoryId} className="bg-white/10 backdrop-blur rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium">{b.categoryName}</span>
-                    <span className={`text-xs font-bold ${overBudget ? "text-red-300" : "text-emerald-300"}`}>
-                      {formatCLP(b.currentSpent)} / {formatCLP(b.budgetAmount)}
-                    </span>
-                  </div>
-                  <div className="w-full bg-white/20 rounded-full h-2.5">
-                    <div
-                      className={`h-2.5 rounded-full transition-all ${
-                        overBudget ? "bg-red-400" : percent > 80 ? "bg-yellow-400" : "bg-emerald-400"
-                      }`}
-                      style={{ width: `${Math.min(percent, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-purple-200 mt-1 text-right">
-                    {Math.round(percent)}% usado
-                    {overBudget && ` — excedido por ${formatCLP(b.currentSpent - b.budgetAmount)}`}
-                  </p>
+          {/* Razonamiento guardado */}
+          {activePlan.reasoning && (
+            <div className={`rounded-lg mb-4 ${activePlan.isActive ? "bg-white/10" : "bg-white/50"}`}>
+              <button
+                onClick={() => setShowPlanReasoning(!showPlanReasoning)}
+                className={`w-full flex items-center justify-between px-4 py-3 text-sm font-medium ${
+                  activePlan.isActive ? "text-purple-200 hover:text-white" : "text-slate-600 hover:text-slate-800"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Brain className="w-4 h-4" />
+                  Analisis de la IA
+                </span>
+                {showPlanReasoning ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {showPlanReasoning && (
+                <div className={`px-4 pb-4 text-sm whitespace-pre-line ${
+                  activePlan.isActive ? "text-purple-100" : "text-slate-600"
+                }`}>
+                  {activePlan.reasoning}
                 </div>
-              );
-            })}
-          </div>
+              )}
+            </div>
+          )}
+
+          {/* Presupuestos con progreso */}
+          {activePlan.isActive && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {activePlan.budgets.map((b) => {
+                const percent = b.budgetAmount > 0 ? (b.currentSpent / b.budgetAmount) * 100 : 0;
+                const overBudget = b.currentSpent > b.budgetAmount;
+                return (
+                  <div key={b.categoryId} className="bg-white/10 backdrop-blur rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{b.categoryName}</span>
+                      <span className={`text-xs font-bold ${overBudget ? "text-red-300" : "text-emerald-300"}`}>
+                        {formatCLP(b.currentSpent)} / {formatCLP(b.budgetAmount)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-white/20 rounded-full h-2.5">
+                      <div
+                        className={`h-2.5 rounded-full transition-all ${
+                          overBudget ? "bg-red-400" : percent > 80 ? "bg-yellow-400" : "bg-emerald-400"
+                        }`}
+                        style={{ width: `${Math.min(percent, 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-purple-200 mt-1 text-right">
+                      {Math.round(percent)}% usado
+                      {overBudget && ` — excedido por ${formatCLP(b.currentSpent - b.budgetAmount)}`}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Metas de Ahorro - ahora integradas con el plan */}
+      {/* Generar Plan */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <div className="flex items-center gap-3 mb-4">
+          <Sparkles className="w-6 h-6 text-purple-600" />
+          <h2 className="text-lg font-semibold text-slate-900">
+            {activePlan ? "Generar Nuevo Plan" : "Plan de Ahorro Mensual"}
+          </h2>
+        </div>
+
+        <p className="text-sm text-slate-500 mb-4">
+          Define cuanto quieres ahorrar al mes y la IA analizara tu situacion financiera para decirte si es viable, desde cuando, y como ajustar tus gastos.
+        </p>
+
+        <form onSubmit={handlePlanSubmit} className="flex gap-3 items-end mb-4">
+          <div className="flex-1 max-w-[200px]">
+            <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
+            <input
+              name="savingsTarget"
+              type="number"
+              required
+              className="w-full px-3 py-2 border rounded-lg text-sm"
+              placeholder="100000"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={planLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
+          >
+            <Sparkles className="w-4 h-4" />
+            {planLoading ? "Analizando..." : "Analizar con IA"}
+          </button>
+        </form>
+
+        {/* Resultado del análisis */}
+        {planResult && (
+          <div className="space-y-4 pt-4 border-t border-slate-100">
+            {/* Razonamiento de la IA */}
+            {planResult.reasoning && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg">
+                <button
+                  onClick={() => setShowReasoning(!showReasoning)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-purple-800"
+                >
+                  <span className="flex items-center gap-2">
+                    <Brain className="w-4 h-4" />
+                    Analisis de la IA
+                  </span>
+                  {showReasoning ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {showReasoning && (
+                  <div className="px-4 pb-4 text-sm text-slate-700 whitespace-pre-line leading-relaxed">
+                    {planResult.reasoning}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Datos financieros */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Saldo actual</p>
+                <p className="text-lg font-bold text-blue-600">{formatCLP(planResult.saldoActual)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Ingresos fijos</p>
+                <p className="text-lg font-bold text-emerald-600">{formatCLP(planResult.totalFixedIncome)}</p>
+                <p className="text-[11px] text-slate-400">
+                  Recibido: {formatCLP(planResult.paidIncome)} · Pendiente: {formatCLP(planResult.pendingIncome)}
+                </p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Gastos fijos</p>
+                <p className="text-lg font-bold text-slate-700">{formatCLP(planResult.fixedExpenses)}</p>
+                <p className="text-[11px] text-slate-400">
+                  Pagado: {formatCLP(planResult.paidExpenses)} · Pendiente: {formatCLP(planResult.pendingExpenses)}
+                </p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Cuotas TC este mes</p>
+                <p className="text-lg font-bold text-orange-600">{formatCLP(planResult.ccCuotasThisMonth)}</p>
+                {planResult.ccCuotasNextMonth > 0 && (
+                  <p className="text-[11px] text-slate-400">
+                    Prox. mes: {formatCLP(planResult.ccCuotasNextMonth)}
+                  </p>
+                )}
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Gastado (variable)</p>
+                <p className="text-lg font-bold text-red-500">{formatCLP(planResult.spentSoFar)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Meta de ahorro</p>
+                <p className="text-lg font-bold text-purple-600">{formatCLP(planResult.savingsTarget)}</p>
+              </div>
+            </div>
+
+            {/* Viabilidad */}
+            {planResult.neverFeasible && (
+              <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 border border-red-200">
+                <X className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-red-800">Meta no alcanzable con los ingresos actuales</p>
+                  <p className="text-sm text-slate-600 mt-1">{planResult.startReason}</p>
+                  {planResult.suggestedTarget && (
+                    <button
+                      onClick={() => generatePlan(planResult.suggestedTarget!)}
+                      className="text-sm text-purple-600 font-medium mt-2 hover:underline"
+                    >
+                      Probar con {formatCLP(planResult.suggestedTarget)} →
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!planResult.neverFeasible && (
+              <>
+                {/* Mes actual */}
+                <div className={`flex items-start gap-3 p-4 rounded-lg ${
+                  planResult.thisMonthFeasible
+                    ? "bg-emerald-50 border border-emerald-200"
+                    : "bg-orange-50 border border-orange-200"
+                }`}>
+                  {planResult.thisMonthFeasible ? (
+                    <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                  )}
+                  <div>
+                    <p className={`text-sm font-medium ${
+                      planResult.thisMonthFeasible ? "text-emerald-800" : "text-orange-800"
+                    }`}>
+                      {MONTH_NAMES[planResult.currentMonth - 1]}: {planResult.thisMonthFeasible ? "Viable" : "No es posible este mes"}
+                    </p>
+                    {!planResult.thisMonthFeasible && (
+                      <p className="text-sm text-slate-600 mt-1">
+                        {planResult.startReason}. El plan se activara a partir de {MONTH_NAMES[planResult.nextMonth - 1]}.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Mes siguiente (si aplica) */}
+                {!planResult.thisMonthFeasible && planResult.nextMonthFeasible && (
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">
+                        {MONTH_NAMES[planResult.nextMonth - 1]}: Viable
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Presupuestos sugeridos */}
+            {planResult.budgets.length > 0 && !planResult.neverFeasible && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-2">Limites sugeridos por categoria</h4>
+                <div className="space-y-2">
+                  {planResult.budgets.map((b) => (
+                    <div key={b.categoryId} className="py-3 px-4 bg-slate-50 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
+                        <span className="text-sm font-bold text-slate-700">
+                          max. {formatCLP(b.budgetAmount)}
+                        </span>
+                      </div>
+                      {b.recommendation && (
+                        <p className="text-xs text-slate-500 mt-1">{b.recommendation}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Botones de acción */}
+            {!planResult.neverFeasible && !planSaved && (
+              <div className="flex gap-3">
+                {planResult.thisMonthFeasible && (
+                  <button
+                    onClick={() => acceptPlan(planResult.currentMonth, planResult.currentYear)}
+                    className="flex-1 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
+                  >
+                    Aplicar desde {MONTH_NAMES[planResult.currentMonth - 1]}
+                  </button>
+                )}
+                {planResult.nextMonthFeasible && (
+                  <button
+                    onClick={() => acceptPlan(planResult.nextMonth, planResult.nextYear)}
+                    className={`flex-1 py-3 rounded-lg font-medium ${
+                      planResult.thisMonthFeasible
+                        ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                        : "bg-purple-600 text-white hover:bg-purple-700"
+                    }`}
+                  >
+                    Aplicar desde {MONTH_NAMES[planResult.nextMonth - 1]}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {planSaved && (
+              <div className="py-3 text-center text-emerald-600 font-medium bg-emerald-50 rounded-lg">
+                Plan guardado! Los limites se aplicaron a cada categoria.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Metas de Ahorro */}
       <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -346,218 +653,6 @@ export function AhorroClient({
           </div>
         ) : (
           <p className="text-sm text-slate-400 text-center py-4">No hay metas de ahorro creadas</p>
-        )}
-      </div>
-
-      {/* Crear/Nuevo Plan de Ahorro */}
-      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Sparkles className="w-6 h-6 text-purple-600" />
-            <h2 className="text-lg font-semibold text-slate-900">
-              {activePlan ? "Generar Nuevo Plan" : "Plan de Ahorro Mensual"}
-            </h2>
-          </div>
-          {!showPlanForm && (
-            <button
-              onClick={() => { setShowPlanForm(true); setPlanResult(null); }}
-              className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
-            >
-              <Sparkles className="w-4 h-4" />
-              {activePlan ? "Nuevo Plan" : "Crear Plan"}
-            </button>
-          )}
-        </div>
-
-        {!showPlanForm && !activePlan && (
-          <p className="text-sm text-slate-500">
-            Crea un plan de ahorro mensual y el agente analizara tu situacion financiera para decirte si es viable.
-          </p>
-        )}
-
-        {showPlanForm && (
-          <div className="space-y-4">
-            <p className="text-sm text-slate-500">
-              El agente analizara tu situacion actual y te dira si es viable este mes o cuando empezar.
-            </p>
-            <form onSubmit={handlePlanSubmit} className="flex gap-3 items-end">
-              <div className="flex-1 max-w-[200px]">
-                <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
-                <input
-                  name="savingsTarget"
-                  type="number"
-                  required
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                  placeholder="100000"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={planLoading}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
-              >
-                <Sparkles className="w-4 h-4" />
-                {planLoading ? "Analizando..." : "Analizar con IA"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowPlanForm(false); setPlanResult(null); }}
-                className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm"
-              >
-                Cancelar
-              </button>
-            </form>
-
-            {/* Resultado del plan */}
-            {planResult && (
-              <div className="space-y-4 pt-4 border-t border-slate-100">
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Ingresos fijos</p>
-                    <p className="text-lg font-bold text-emerald-600">
-                      {formatCLP(planResult.totalFixedIncome ?? planResult.income)}
-                    </p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Gastos fijos</p>
-                    <p className="text-lg font-bold text-slate-700">{formatCLP(planResult.fixedExpenses)}</p>
-                    {(planResult.pendingExpenses ?? 0) > 0 && (
-                      <p className="text-[11px] text-amber-600">
-                        Pendiente: {formatCLP(planResult.pendingExpenses!)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Cuotas TC</p>
-                    <p className="text-lg font-bold text-orange-600">
-                      {formatCLP(planResult.ccCuotasThisMonth ?? 0)}
-                    </p>
-                    {(planResult.ccCuotasNextMonth ?? 0) > 0 && (
-                      <p className="text-[11px] text-slate-400">
-                        Prox. mes: {formatCLP(planResult.ccCuotasNextMonth!)}
-                      </p>
-                    )}
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Ya gastado (variable)</p>
-                    <p className="text-lg font-bold text-red-500">{formatCLP(planResult.spentSoFar)}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Saldo actual</p>
-                    <p className="text-lg font-bold text-blue-600">{formatCLP(planResult.saldoActual)}</p>
-                  </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Meta de ahorro</p>
-                    <p className="text-lg font-bold text-purple-600">{formatCLP(planResult.savingsTarget)}</p>
-                  </div>
-                </div>
-
-                {planResult.neverFeasible && (
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 border border-red-200">
-                    <X className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-red-800">Objetivo no realista</p>
-                      <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
-                      {planResult.suggestedTarget && (
-                        <button
-                          onClick={() => generatePlan(planResult.suggestedTarget!)}
-                          className="text-sm text-purple-600 font-medium mt-2 hover:underline"
-                        >
-                          Probar con {formatCLP(planResult.suggestedTarget)} →
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {!planResult.neverFeasible && (
-                  <div className={`flex items-start gap-3 p-4 rounded-lg ${
-                    planResult.thisMonthFeasible
-                      ? "bg-emerald-50 border border-emerald-200"
-                      : "bg-orange-50 border border-orange-200"
-                  }`}>
-                    {planResult.thisMonthFeasible ? (
-                      <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                    )}
-                    <div>
-                      <p className={`text-sm font-medium ${
-                        planResult.thisMonthFeasible ? "text-emerald-800" : "text-orange-800"
-                      }`}>
-                        {MONTH_NAMES[planResult.currentMonth - 1]}: {planResult.thisMonthFeasible ? "Viable" : "No recomendado"}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
-                    </div>
-                  </div>
-                )}
-
-                {!planResult.neverFeasible && !planResult.thisMonthFeasible && planResult.nextMonthFeasible && (
-                  <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                    <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-emerald-800">
-                        {MONTH_NAMES[planResult.nextMonth - 1]}: Viable
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">{planResult.nextMonthMessage}</p>
-                    </div>
-                  </div>
-                )}
-
-                {planResult.budgets.length > 0 && !planResult.neverFeasible && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-slate-700 mb-2">Presupuesto por categoria</h4>
-                    <div className="space-y-2">
-                      {planResult.budgets.map((b) => (
-                        <div key={b.categoryId} className="py-3 px-4 bg-slate-50 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
-                            <span className="text-sm font-bold text-slate-700">
-                              max. {formatCLP(b.budgetAmount)}
-                            </span>
-                          </div>
-                          {b.recommendation && (
-                            <p className="text-xs text-slate-500 mt-1">{b.recommendation}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {!planResult.neverFeasible && !planSaved && (
-                  <div className="flex gap-3">
-                    {planResult.thisMonthFeasible && (
-                      <button
-                        onClick={() => acceptPlan(planResult.currentMonth, planResult.currentYear)}
-                        className="flex-1 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
-                      >
-                        Activar desde {MONTH_NAMES[planResult.currentMonth - 1]}
-                      </button>
-                    )}
-                    {planResult.nextMonthFeasible && (
-                      <button
-                        onClick={() => acceptPlan(planResult.nextMonth, planResult.nextYear)}
-                        className={`flex-1 py-3 rounded-lg font-medium ${
-                          planResult.thisMonthFeasible
-                            ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                            : "bg-purple-600 text-white hover:bg-purple-700"
-                        }`}
-                      >
-                        Activar desde {MONTH_NAMES[planResult.nextMonth - 1]}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {planSaved && (
-                  <div className="py-3 text-center text-emerald-600 font-medium bg-emerald-50 rounded-lg">
-                    Plan guardado!
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
         )}
       </div>
     </div>

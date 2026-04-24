@@ -92,6 +92,7 @@ model SavingsPlan {
   savingsTarget   Float           // cuánto quiere ahorrar
   totalIncome     Float           // ingresos fijos calculados
   totalFixed      Float           // gastos fijos calculados
+  reasoning       String?         // análisis/razonamiento de la IA
   isActive        Boolean         @default(true)
   budgets         CategoryBudget[]
   createdAt       DateTime        @default(now())

@@ -10,8 +10,9 @@ export default async function AhorroPage() {
 
   const [goals, activePlan, categories] = await Promise.all([
     prisma.savingsGoal.findMany({ orderBy: { createdAt: "desc" } }),
-    prisma.savingsPlan.findUnique({
-      where: { month_year: { month: now.getMonth() + 1, year: now.getFullYear() } },
+    prisma.savingsPlan.findFirst({
+      where: { isActive: true },
+      orderBy: [{ year: "desc" }, { month: "desc" }],
       include: {
         budgets: {
           include: { category: true },
@@ -44,6 +45,8 @@ export default async function AhorroPage() {
         savingsTarget: activePlan.savingsTarget,
         totalIncome: activePlan.totalIncome,
         totalFixed: activePlan.totalFixed,
+        reasoning: activePlan.reasoning ?? null,
+        isActive: activePlan.isActive,
         budgets: activePlan.budgets.map((b) => ({
           categoryId: b.categoryId,
           categoryName: b.category.name,
