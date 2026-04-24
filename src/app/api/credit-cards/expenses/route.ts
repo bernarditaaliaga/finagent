@@ -40,28 +40,15 @@ export async function POST(request: Request) {
     const numInstallments = installments || 1;
     const installmentAmount = Math.round(totalAmount / numInstallments);
 
-    // Calcular mes de inicio de facturación según ciclo de cierre (28 del mes)
-    const purchase = new Date(purchaseDate);
-    const purchaseDay = purchase.getDate();
-    const purchaseMonth = purchase.getMonth() + 1;
-    const purchaseYear = purchase.getFullYear();
-
-    // Si la compra es antes del cierre (28), se factura el mes siguiente
-    // Si es después del 28, se factura en 2 meses
-    let billingStartMonth: number;
-    let billingStartYear: number;
-
-    if (purchaseDay <= 28) {
-      // Compra antes del cierre → se factura el mes siguiente
-      billingStartMonth = purchaseMonth === 12 ? 1 : purchaseMonth + 1;
-      billingStartYear = purchaseMonth === 12 ? purchaseYear + 1 : purchaseYear;
-    } else {
-      // Compra después del cierre → se factura en 2 meses
-      const nextMonth = purchaseMonth === 12 ? 1 : purchaseMonth + 1;
-      const nextYear = purchaseMonth === 12 ? purchaseYear + 1 : purchaseYear;
-      billingStartMonth = nextMonth === 12 ? 1 : nextMonth + 1;
-      billingStartYear = nextMonth === 12 ? nextYear + 1 : nextYear;
+    // Obtener día de cierre de la tarjeta (default 26)
+    let closeDay = 26;
+    if (creditCardId) {
+      const card = await prisma.creditCard.findUnique({ where: { id: creditCardId } });
+      if (card) closeDay = card.billingCloseDay;
     }
+
+    const purchase = new Date(purchaseDate);
+    const { billingStartMonth, billingStartYear } = calcBillingStart(purchase, closeDay);
 
     const expense = await prisma.creditCardExpense.create({
       data: {
@@ -115,19 +102,16 @@ export async function PATCH(request: Request) {
     if (purchaseDate !== undefined) {
       const purchase = new Date(purchaseDate);
       updates.purchaseDate = purchase;
-      const day = purchase.getDate();
-      const month = purchase.getMonth() + 1;
-      const year = purchase.getFullYear();
 
-      if (day <= 28) {
-        updates.billingStartMonth = month === 12 ? 1 : month + 1;
-        updates.billingStartYear = month === 12 ? year + 1 : year;
-      } else {
-        const next = month === 12 ? 1 : month + 1;
-        const nextY = month === 12 ? year + 1 : year;
-        updates.billingStartMonth = next === 12 ? 1 : next + 1;
-        updates.billingStartYear = next === 12 ? nextY + 1 : nextY;
-      }
+      // Obtener día de cierre de la tarjeta
+      const existing2 = await prisma.creditCardExpense.findUnique({
+        where: { id },
+        include: { creditCard: true },
+      });
+      const closeDay = existing2?.creditCard?.billingCloseDay ?? 26;
+      const billing = calcBillingStart(purchase, closeDay);
+      updates.billingStartMonth = billing.billingStartMonth;
+      updates.billingStartYear = billing.billingStartYear;
     }
 
     const expense = await prisma.creditCardExpense.update({
@@ -157,6 +141,31 @@ export async function DELETE(request: Request) {
   } catch (error) {
     console.error("Error eliminando compra TC:", error);
     return NextResponse.json({ error: "Error al eliminar" }, { status: 500 });
+  }
+}
+
+/**
+ * Calcula el mes de inicio de facturación según la fecha de compra y el día de cierre.
+ * Si la compra es antes o en el día de cierre → se factura el mes siguiente.
+ * Si es después del cierre → se factura en 2 meses.
+ */
+function calcBillingStart(purchase: Date, closeDay: number) {
+  const purchaseDay = purchase.getDate();
+  const purchaseMonth = purchase.getMonth() + 1;
+  const purchaseYear = purchase.getFullYear();
+
+  if (purchaseDay <= closeDay) {
+    // Compra antes o en el cierre → factura mes siguiente
+    const billingStartMonth = purchaseMonth === 12 ? 1 : purchaseMonth + 1;
+    const billingStartYear = purchaseMonth === 12 ? purchaseYear + 1 : purchaseYear;
+    return { billingStartMonth, billingStartYear };
+  } else {
+    // Compra después del cierre → factura en 2 meses
+    const nextMonth = purchaseMonth === 12 ? 1 : purchaseMonth + 1;
+    const nextYear = purchaseMonth === 12 ? purchaseYear + 1 : purchaseYear;
+    const billingStartMonth = nextMonth === 12 ? 1 : nextMonth + 1;
+    const billingStartYear = nextMonth === 12 ? nextYear + 1 : nextYear;
+    return { billingStartMonth, billingStartYear };
   }
 }
 
