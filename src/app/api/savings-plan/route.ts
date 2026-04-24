@@ -259,11 +259,16 @@ GASTOS VARIABLES YA REALIZADOS ESTE MES: $${spentSoFar.toLocaleString("es-CL")}
 ${categoryInfo.filter((c) => c.avgMonthly > 0 || c.currentSpent > 0).map((c) => `- ${c.name} [${c.priority}]: promedio mensual $${c.avgMonthly.toLocaleString("es-CL")}, este mes $${c.currentSpent.toLocaleString("es-CL")}`).join("\n")}
 
 ═══ PRIORIDADES (qué tan reducible es cada categoría) ═══
-- "esencial": MUY difícil de reducir, máximo 5-10% (arriendo, salud, educación)
-- "necesario": se puede reducir un poco, 10-20%
-- "prescindible": se puede reducir significativamente, 30-50%
-- "innecesario": se puede eliminar o reducir drásticamente, 50-80%
+IMPORTANTE: Los recortes deben ser REALISTAS. Usa el promedio mensual como referencia.
+Contexto: estamos en Chile, la bencina es cara (~$1.200/litro), la comida es cara, etc.
+No sugieras montos irreales — si alguien gasta $100.000 en bencina, no puede gastar $35.000.
+
+- "esencial": casi intocable, máximo 5% de reducción
+- "necesario": reducción conservadora, máximo 10-15% del promedio
+- "prescindible": reducción moderada, máximo 15-25% del promedio
+- "innecesario": se puede recortar fuerte, 30-50% del promedio
 - Los gastos fijos NO son negociables, van aparte
+- El límite sugerido NUNCA debe ser menor al 60% del promedio histórico
 
 META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
 
@@ -572,10 +577,11 @@ function generateBasicPlan(ctx: {
     if (cat.priority === "esencial") {
       recommendation = "Gasto esencial, no se recorta";
     } else if (remainingCut > 0 && budget > 0) {
-      const cutPercent = cat.priority === "innecesario" ? 0.7
-        : cat.priority === "prescindible" ? 0.4
-        : cat.priority === "necesario" ? 0.15
-        : 0.2;
+      const cutPercent = cat.priority === "innecesario" ? 0.4
+        : cat.priority === "prescindible" ? 0.2
+        : cat.priority === "necesario" ? 0.12
+        : cat.priority === "esencial" ? 0.05
+        : 0.15;
       const cut = Math.min(budget * cutPercent, remainingCut);
       budget -= cut;
       remainingCut -= cut;

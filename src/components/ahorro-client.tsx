@@ -164,13 +164,23 @@ export function AhorroClient({
     const updatedMessages = [...chatMessages, { role: "user", text: userMsg }];
     setChatMessages(updatedMessages);
 
-    // Construir historial para la API (pares assistant/user después del prompt inicial)
-    const chatHistory = updatedMessages.map((m) => ({
-      role: m.role,
-      content: m.role === "assistant"
-        ? `${m.text}\n\n(Respondí con el JSON del plan anterior)`
-        : m.text + "\n\nResponde con el JSON actualizado siguiendo el mismo formato.",
-    }));
+    // Construir historial: incluir el JSON real del plan para que la IA tenga contexto
+    const prevPlanJson = JSON.stringify({
+      reasoning: planResult.reasoning,
+      thisMonthFeasible: planResult.thisMonthFeasible,
+      nextMonthFeasible: planResult.nextMonthFeasible,
+      neverFeasible: planResult.neverFeasible,
+      startMonth: planResult.startMonth,
+      startYear: planResult.startYear,
+      budgets: planResult.budgets,
+    });
+
+    const chatHistory = [
+      // El assistant respondió con el JSON del plan
+      { role: "assistant", content: prevPlanJson },
+      // El usuario pide cambios
+      { role: "user", content: `El usuario quiere ajustes al plan. Su mensaje: "${userMsg}"\n\nModifica el plan según lo que pide. Responde con el JSON completo actualizado (mismo formato que antes), con el reasoning explicando los cambios realizados.` },
+    ];
 
     try {
       const res = await fetch("/api/savings-plan", {
