@@ -15,6 +15,24 @@ function getHeaders() {
   };
 }
 
+// Crea un link_intent para obtener el widget_token necesario para abrir el widget
+export async function createLinkIntent(): Promise<{ id: string; widget_token: string }> {
+  const res = await fetch(`${FINTOC_BASE_URL}/link_intents`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      product: "movements",
+      country: "cl",
+      holder_type: "individual",
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Create link_intent failed (${res.status}): ${JSON.stringify(err)}`);
+  }
+  return res.json();
+}
+
 // Intercambia el exchangeToken del widget por el link_token real (one-time)
 export async function exchangeLinkToken(
   linkIntentId: string,

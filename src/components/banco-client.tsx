@@ -55,16 +55,23 @@ export function BancoClient({
     setMessage("");
 
     try {
-      // Paso 1: Pedir un widget_token al backend
-      // Abrir el widget — el usuario se loguea en su banco
+      // Paso 1: Crear un link_intent en el backend para obtener widget_token
+      const intentRes = await fetch("/api/fintoc/create-intent", { method: "POST" });
+      const intentData = await intentRes.json();
+      if (!intentData.widgetToken) {
+        setMessage(intentData.error ?? "Error obteniendo widget token");
+        setConnecting(false);
+        return;
+      }
+
+      // Paso 2: Abrir el widget con widgetToken (flujo link_intents)
       const widget = window.Fintoc.create({
         holderType: "individual",
         product: "movements",
         publicKey: fintocPublicKey,
         country: "cl",
-        webhookUrl: "https://finagent-eight.vercel.app/api/fintoc/webhook",
+        widgetToken: intentData.widgetToken,
         onSuccess: async (linkIntent: Record<string, unknown>) => {
-          // El widget entrega un linkIntent con id y exchangeToken
           console.log("Fintoc onSuccess:", JSON.stringify(linkIntent));
           try {
             const res = await fetch("/api/fintoc/connect", {
