@@ -33,6 +33,7 @@ model Category {
   color        String?       // color hex para el dashboard
   budgetLimit  Float?        // límite de gasto mensual (opcional)
   priority     String?       // "esencial", "necesario", "prescindible", "innecesario"
+  frequency    String        @default("recurrente") // "recurrente" o "ocasional"
   transactions Transaction[]
   fixedExpenses FixedExpense[]
   rules        CategoryRule[]

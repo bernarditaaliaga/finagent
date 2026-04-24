@@ -12,6 +12,7 @@ interface Category {
   color: string | null;
   budgetLimit: number | null;
   priority: string | null;
+  frequency: string;
   totalTransactions: number;
   spentThisMonth: number;
 }
@@ -74,6 +75,7 @@ export function CategoriasClient({
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("");
   const [editBudget, setEditBudget] = useState("");
+  const [editFrequency, setEditFrequency] = useState("recurrente");
   const [addingSenderId, setAddingSenderId] = useState<string | null>(null);
   const [newSenderKeyword, setNewSenderKeyword] = useState("");
 
@@ -93,6 +95,7 @@ export function CategoriasClient({
         name: formData.get("name"),
         color: formData.get("color"),
         priority: formData.get("priority") || null,
+        frequency: formData.get("frequency") || "recurrente",
         budgetLimit: formData.get("budgetLimit")
           ? parseFloat(formData.get("budgetLimit") as string)
           : null,
@@ -103,7 +106,7 @@ export function CategoriasClient({
       const newCat = await res.json();
       setCategories([
         ...categories,
-        { ...newCat, totalTransactions: 0, spentThisMonth: 0 },
+        { ...newCat, totalTransactions: 0, spentThisMonth: 0, frequency: newCat.frequency ?? "recurrente" },
       ]);
       setShowForm(false);
       form.reset();
@@ -146,6 +149,7 @@ export function CategoriasClient({
     setEditName(cat.name);
     setEditColor(cat.color ?? "#6B7280");
     setEditBudget(cat.budgetLimit?.toString() ?? "");
+    setEditFrequency(cat.frequency ?? "recurrente");
   }
 
   async function saveEdit(catId: string) {
@@ -157,12 +161,13 @@ export function CategoriasClient({
         name: editName,
         color: editColor,
         budgetLimit: editBudget ? parseFloat(editBudget) : null,
+        frequency: editFrequency,
       }),
     });
     if (res.ok) {
       setCategories(categories.map((c) =>
         c.id === catId
-          ? { ...c, name: editName, color: editColor, budgetLimit: editBudget ? parseFloat(editBudget) : null }
+          ? { ...c, name: editName, color: editColor, budgetLimit: editBudget ? parseFloat(editBudget) : null, frequency: editFrequency }
           : c
       ));
       setEditingId(null);
@@ -410,6 +415,13 @@ export function CategoriasClient({
               ))}
             </select>
           </div>
+          <div className="w-40">
+            <label className="block text-xs text-slate-500 mb-1">Frecuencia</label>
+            <select name="frequency" className="w-full px-3 py-2 border rounded-lg text-sm">
+              <option value="recurrente">Recurrente</option>
+              <option value="ocasional">Ocasional</option>
+            </select>
+          </div>
           <button
             type="submit"
             className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
@@ -467,6 +479,17 @@ export function CategoriasClient({
                     placeholder="Sin limite"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Frecuencia</label>
+                  <select
+                    value={editFrequency}
+                    onChange={(e) => setEditFrequency(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    <option value="recurrente">Recurrente (todos los meses)</option>
+                    <option value="ocasional">Ocasional (no todos los meses)</option>
+                  </select>
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => saveEdit(cat.id)}
@@ -495,6 +518,11 @@ export function CategoriasClient({
                     <h3 className="font-semibold text-slate-900">{cat.name}</h3>
                   </button>
                   <div className="flex items-center gap-1">
+                    {cat.frequency === "ocasional" && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+                        Ocasional
+                      </span>
+                    )}
                     {(() => {
                       const p = PRIORITIES.find((pr) => pr.value === cat.priority);
                       return p ? (

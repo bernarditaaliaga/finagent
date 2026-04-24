@@ -176,7 +176,7 @@ export async function POST(request: Request) {
       fixedExpenses.map((e) => e.categoryId).filter(Boolean) as string[]
     );
 
-    const categoryInfo = categories.filter((cat) => !fixedCategoryIds.has(cat.id)).map((cat) => {
+    const categoryInfo = categories.filter((cat) => !fixedCategoryIds.has(cat.id) && cat.frequency !== "ocasional").map((cat) => {
       const currentSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       const historicalForCat = historicalTxns.filter((t) => t.categoryId === cat.id);
       const monthsWithData = new Set(

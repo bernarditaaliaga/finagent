@@ -30,6 +30,8 @@ export async function GET() {
     icon: cat.icon,
     color: cat.color,
     budgetLimit: cat.budgetLimit,
+    priority: cat.priority,
+    frequency: cat.frequency,
     totalTransactions: cat._count.transactions,
     spentThisMonth: cat.transactions.reduce(
       (sum, t) => sum + Math.abs(t.amount),
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
         color: body.color ?? "#6B7280",
         budgetLimit: body.budgetLimit ?? null,
         priority: body.priority ?? null,
+        frequency: body.frequency ?? "recurrente",
       },
     });
     return NextResponse.json(category, { status: 201 });
@@ -81,6 +84,7 @@ export async function PATCH(request: Request) {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.color !== undefined && { color: data.color }),
         ...(data.budgetLimit !== undefined && { budgetLimit: data.budgetLimit }),
+        ...(data.frequency !== undefined && { frequency: data.frequency }),
       },
     });
     return NextResponse.json(category);
