@@ -32,6 +32,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const savingsTarget = body.savingsTarget;
+    const userInstructions = (body.userInstructions as string) || "";
+    const chatHistory = (body.chatHistory as { role: string; content: string }[]) || [];
 
     if (!savingsTarget || savingsTarget <= 0) {
       return NextResponse.json(
@@ -305,13 +307,26 @@ Responde EXACTAMENTE en JSON:
   ]
 }
 
-Solo JSON válido, sin texto adicional fuera del JSON.`;
+Solo JSON válido, sin texto adicional fuera del JSON.${userInstructions ? `\n\n═══ INDICACIONES ADICIONALES DEL USUARIO ═══\n${userInstructions}` : ""}`;
 
     try {
+      // Construir mensajes: prompt base + historial de chat
+      const messages: { role: "user" | "assistant"; content: string }[] = [
+        { role: "user", content: prompt },
+      ];
+
+      // Si hay historial de conversación previo, agregarlo
+      for (const msg of chatHistory) {
+        messages.push({
+          role: msg.role as "user" | "assistant",
+          content: msg.content,
+        });
+      }
+
       const response = await anthropic.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 3000,
-        messages: [{ role: "user", content: prompt }],
+        messages,
       });
 
       const text = response.content[0].type === "text" ? response.content[0].text : "";

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { formatCLP } from "@/lib/format";
 import {
   Plus, PiggyBank, Target, Sparkles, Check, AlertTriangle, X,
-  Trash2, Power, PowerOff, ChevronDown, ChevronUp, Brain,
+  Trash2, Power, PowerOff, ChevronDown, ChevronUp, Brain, Send,
 } from "lucide-react";
 
 interface SavingsGoal {
@@ -89,6 +89,10 @@ export function AhorroClient({
   const [showReasoning, setShowReasoning] = useState(true);
   const [showPlanReasoning, setShowPlanReasoning] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: string; text: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [currentTarget, setCurrentTarget] = useState(0);
 
   const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
   const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
@@ -121,27 +125,73 @@ export function AhorroClient({
     }
   }
 
-  async function generatePlan(savingsTarget: number) {
+  async function generatePlan(savingsTarget: number, userInstructions?: string) {
     setPlanLoading(true);
     setPlanResult(null);
     setPlanSaved(false);
     setShowReasoning(true);
+    setCurrentTarget(savingsTarget);
+    setChatMessages([]);
     try {
       const res = await fetch("/api/savings-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ savingsTarget }),
+        body: JSON.stringify({ savingsTarget, userInstructions }),
       });
       const data = await res.json();
       if (data.error) {
         alert(data.error);
       } else {
         setPlanResult(data);
+        // Agregar la respuesta de la IA al historial
+        if (data.reasoning) {
+          setChatMessages([{ role: "assistant", text: data.reasoning }]);
+        }
       }
     } catch {
       alert("Error generando plan");
     } finally {
       setPlanLoading(false);
+    }
+  }
+
+  async function sendChatMessage() {
+    if (!chatInput.trim() || chatLoading || !planResult) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+    setChatLoading(true);
+
+    const updatedMessages = [...chatMessages, { role: "user", text: userMsg }];
+    setChatMessages(updatedMessages);
+
+    // Construir historial para la API (pares assistant/user después del prompt inicial)
+    const chatHistory = updatedMessages.map((m) => ({
+      role: m.role,
+      content: m.role === "assistant"
+        ? `${m.text}\n\n(Respondí con el JSON del plan anterior)`
+        : m.text + "\n\nResponde con el JSON actualizado siguiendo el mismo formato.",
+    }));
+
+    try {
+      const res = await fetch("/api/savings-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          savingsTarget: currentTarget,
+          chatHistory,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setChatMessages([...updatedMessages, { role: "assistant", text: `Error: ${data.error}` }]);
+      } else {
+        setPlanResult(data);
+        setChatMessages([...updatedMessages, { role: "assistant", text: data.reasoning || "Plan actualizado." }]);
+      }
+    } catch {
+      setChatMessages([...updatedMessages, { role: "assistant", text: "Error de conexion." }]);
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -192,7 +242,8 @@ export function AhorroClient({
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const target = parseFloat(formData.get("savingsTarget") as string);
-    if (target > 0) generatePlan(target);
+    const instructions = (formData.get("userInstructions") as string) || "";
+    if (target > 0) generatePlan(target, instructions || undefined);
   }
 
   return (
@@ -353,30 +404,53 @@ export function AhorroClient({
           Define cuanto quieres ahorrar al mes y la IA analizara tu situacion financiera para decirte si es viable, desde cuando, y como ajustar tus gastos.
         </p>
 
-        <form onSubmit={handlePlanSubmit} className="flex gap-3 items-end mb-4">
-          <div className="flex-1 max-w-[200px]">
-            <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
-            <input
-              name="savingsTarget"
-              type="number"
-              required
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              placeholder="100000"
+        <form onSubmit={handlePlanSubmit} className="space-y-3 mb-4">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1 max-w-[200px]">
+              <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
+              <input
+                name="savingsTarget"
+                type="number"
+                required
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="100000"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={planLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
+            >
+              <Sparkles className="w-4 h-4" />
+              {planLoading ? "Analizando..." : "Analizar con IA"}
+            </button>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Indicaciones adicionales (opcional)</label>
+            <textarea
+              name="userInstructions"
+              rows={2}
+              className="w-full px-3 py-2 border rounded-lg text-sm resize-none"
+              placeholder="Ej: No quiero recortar comida, prefiero reducir scooters..."
             />
           </div>
-          <button
-            type="submit"
-            disabled={planLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
-          >
-            <Sparkles className="w-4 h-4" />
-            {planLoading ? "Analizando..." : "Analizar con IA"}
-          </button>
         </form>
 
         {/* Resultado del análisis */}
         {planResult && (
           <div className="space-y-4 pt-4 border-t border-slate-100">
+            {/* Header con botón cerrar */}
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-slate-700">Resultado del analisis</h4>
+              <button
+                onClick={() => { setPlanResult(null); setChatMessages([]); }}
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                title="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
             {/* Razonamiento de la IA */}
             {planResult.reasoning && (
               <div className="bg-purple-50 border border-purple-200 rounded-lg">
@@ -548,6 +622,59 @@ export function AhorroClient({
             {planSaved && (
               <div className="py-3 text-center text-emerald-600 font-medium bg-emerald-50 rounded-lg">
                 Plan guardado! Los limites se aplicaron a cada categoria.
+              </div>
+            )}
+
+            {/* Chat interactivo */}
+            {!planSaved && (
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                  <p className="text-xs font-medium text-slate-600">Refinar el plan con indicaciones</p>
+                </div>
+
+                {/* Historial de mensajes */}
+                {chatMessages.length > 1 && (
+                  <div className="max-h-60 overflow-y-auto p-3 space-y-3">
+                    {chatMessages.map((msg, i) => (
+                      <div
+                        key={i}
+                        className={`text-sm ${
+                          msg.role === "user"
+                            ? "bg-purple-50 text-purple-800 ml-8 rounded-lg px-3 py-2"
+                            : "bg-slate-50 text-slate-700 mr-8 rounded-lg px-3 py-2"
+                        }`}
+                      >
+                        <p className="text-[11px] font-medium mb-1 opacity-60">
+                          {msg.role === "user" ? "Tu" : "IA"}
+                        </p>
+                        <p className="whitespace-pre-line text-xs">{msg.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input */}
+                <div className="flex gap-2 p-3 border-t border-slate-100">
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } }}
+                    placeholder="Ej: Baja mas scooters, no toques comida..."
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                    disabled={chatLoading}
+                  />
+                  <button
+                    onClick={sendChatMessage}
+                    disabled={chatLoading || !chatInput.trim()}
+                    className="px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 text-sm"
+                  >
+                    {chatLoading ? (
+                      <Sparkles className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
