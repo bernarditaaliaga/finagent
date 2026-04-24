@@ -7,10 +7,8 @@ import {
   Tags,
   CalendarClock,
   PiggyBank,
-  TrendingUp,
   Users,
   Landmark,
-  GraduationCap,
   CreditCard,
 } from "lucide-react";
 
@@ -20,10 +18,8 @@ const navigation = [
   { name: "Gastos Fijos", href: "/gastos-fijos", icon: CalendarClock },
   { name: "Tarjeta Credito", href: "/tarjeta-credito", icon: CreditCard },
   { name: "Ahorro", href: "/ahorro", icon: PiggyBank },
-  { name: "Indicadores", href: "/indicadores", icon: TrendingUp },
   { name: "Dividir Gastos", href: "/split", icon: Users },
   { name: "Banco", href: "/banco", icon: Landmark },
-  { name: "Aprender", href: "/aprender", icon: GraduationCap },
 ];
 
 export function Sidebar() {

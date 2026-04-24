@@ -15,10 +15,11 @@ export async function GET() {
       transactions: {
         where: {
           date: { gte: startOfMonth, lt: endOfMonth },
+          amount: { lt: 0 },
         },
         select: { amount: true },
       },
-      _count: { select: { transactions: true } },
+      _count: { select: { transactions: { where: { amount: { lt: 0 } } } } },
     },
     orderBy: { name: "asc" },
   });

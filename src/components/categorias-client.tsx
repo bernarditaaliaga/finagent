@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCLP, formatDate } from "@/lib/format";
-import { Plus, Tag, Sparkles, Trash2, ArrowLeft, Pencil, X, Check, UserPlus } from "lucide-react";
+import { Plus, Tag, Sparkles, Trash2, ArrowLeft, Pencil, X, Check } from "lucide-react";
 
 interface Category {
   id: string;
@@ -15,6 +15,13 @@ interface Category {
   frequency: string;
   totalTransactions: number;
   spentThisMonth: number;
+}
+
+interface Summary {
+  totalIncome: number;
+  totalFixed: number;
+  paidFixed: number;
+  totalVariableSpent: number;
 }
 
 const PRIORITIES = [
@@ -59,12 +66,14 @@ export function CategoriasClient({
   rules: initialRules = [],
   selectedCategoryId = null,
   selectedCategoryTransactions = [],
+  summary,
 }: {
   categories: Category[];
   uncategorized: Transaction[];
   rules?: Rule[];
   selectedCategoryId?: string | null;
   selectedCategoryTransactions?: Transaction[];
+  summary: Summary;
 }) {
   const router = useRouter();
   const [categories, setCategories] = useState(initialCategories);
@@ -75,9 +84,8 @@ export function CategoriasClient({
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("");
   const [editBudget, setEditBudget] = useState("");
+  const [editPriority, setEditPriority] = useState("");
   const [editFrequency, setEditFrequency] = useState("recurrente");
-  const [addingSenderId, setAddingSenderId] = useState<string | null>(null);
-  const [newSenderKeyword, setNewSenderKeyword] = useState("");
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId)
@@ -95,10 +103,6 @@ export function CategoriasClient({
         name: formData.get("name"),
         color: formData.get("color"),
         priority: formData.get("priority") || null,
-        frequency: formData.get("frequency") || "recurrente",
-        budgetLimit: formData.get("budgetLimit")
-          ? parseFloat(formData.get("budgetLimit") as string)
-          : null,
       }),
     });
 
@@ -131,24 +135,12 @@ export function CategoriasClient({
     window.location.reload();
   }
 
-  async function updatePriority(categoryId: string, priority: string | null) {
-    const res = await fetch("/api/categories", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: categoryId, priority }),
-    });
-    if (res.ok) {
-      setCategories(categories.map((c) =>
-        c.id === categoryId ? { ...c, priority } : c
-      ));
-    }
-  }
-
   function startEdit(cat: Category) {
     setEditingId(cat.id);
     setEditName(cat.name);
     setEditColor(cat.color ?? "#6B7280");
     setEditBudget(cat.budgetLimit?.toString() ?? "");
+    setEditPriority(cat.priority ?? "");
     setEditFrequency(cat.frequency ?? "recurrente");
   }
 
@@ -161,13 +153,14 @@ export function CategoriasClient({
         name: editName,
         color: editColor,
         budgetLimit: editBudget ? parseFloat(editBudget) : null,
+        priority: editPriority || null,
         frequency: editFrequency,
       }),
     });
     if (res.ok) {
       setCategories(categories.map((c) =>
         c.id === catId
-          ? { ...c, name: editName, color: editColor, budgetLimit: editBudget ? parseFloat(editBudget) : null, frequency: editFrequency }
+          ? { ...c, name: editName, color: editColor, budgetLimit: editBudget ? parseFloat(editBudget) : null, priority: editPriority || null, frequency: editFrequency }
           : c
       ));
       setEditingId(null);
@@ -195,7 +188,6 @@ export function CategoriasClient({
       if (res.ok) {
         const data = await res.json();
         setAutoCatResult(`${data.categorized} de ${data.total} transacciones categorizadas`);
-        // Recargar después de un momento para que se vea el mensaje
         setTimeout(() => window.location.reload(), 1500);
       } else {
         setAutoCatResult("Error al auto-categorizar");
@@ -229,25 +221,6 @@ export function CategoriasClient({
     }
   }
 
-  async function addSenderToCategory(categoryId: string) {
-    if (!newSenderKeyword.trim()) return;
-    const res = await fetch("/api/categorize/rules", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        keyword: newSenderKeyword.trim(),
-        categoryId,
-        issender: true,
-      }),
-    });
-    if (res.ok) {
-      const newRule = await res.json();
-      setRules([...rules, newRule]);
-      setNewSenderKeyword("");
-      setAddingSenderId(null);
-    }
-  }
-
   async function handleDeleteRule(ruleId: string) {
     const res = await fetch(`/api/categorize/rules?id=${ruleId}`, {
       method: "DELETE",
@@ -259,6 +232,7 @@ export function CategoriasClient({
 
   // === VISTA DE CATEGORÍA SELECCIONADA ===
   if (selectedCategory) {
+    const catRules = rules.filter((r) => r.categoryId === selectedCategory.id);
     return (
       <div className="space-y-4">
         <button
@@ -273,7 +247,24 @@ export function CategoriasClient({
           className="bg-white rounded-xl p-5 shadow-sm border-l-4"
           style={{ borderLeftColor: selectedCategory.color ?? "#6B7280" }}
         >
-          <h2 className="text-xl font-bold text-slate-900">{selectedCategory.name}</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold text-slate-900">{selectedCategory.name}</h2>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const p = PRIORITIES.find((pr) => pr.value === selectedCategory.priority);
+                return p ? (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.color}`}>
+                    {p.label}
+                  </span>
+                ) : null;
+              })()}
+              {selectedCategory.frequency === "ocasional" && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+                  Ocasional
+                </span>
+              )}
+            </div>
+          </div>
           <p className="text-2xl font-bold mt-1" style={{ color: selectedCategory.color ?? "#6B7280" }}>
             {formatCLP(selectedCategory.spentThisMonth)}
           </p>
@@ -284,12 +275,33 @@ export function CategoriasClient({
           )}
         </div>
 
+        {/* Reglas de esta categoría */}
+        {catRules.length > 0 && (
+          <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-700 mb-2">Reglas de asignacion</h3>
+            <div className="space-y-1">
+              {catRules.map((r) => (
+                <div key={r.id} className="flex items-center justify-between bg-slate-50 rounded px-3 py-1.5">
+                  <span className="text-xs text-slate-600">
+                    {r.issender ? "Remitente" : "Descripcion"} contiene &quot;{r.keyword}&quot;
+                  </span>
+                  <button
+                    onClick={() => handleDeleteRule(r.id)}
+                    className="text-slate-300 hover:text-red-500 p-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-5 py-3 border-b border-slate-100">
             <h3 className="font-semibold text-slate-900">
               Transacciones ({selectedCategoryTransactions.length})
             </h3>
-            <p className="text-xs text-slate-400">Cambia la categoría de cualquier transacción</p>
           </div>
           {selectedCategoryTransactions.length === 0 ? (
             <div className="p-8 text-center text-slate-400 text-sm">
@@ -302,9 +314,6 @@ export function CategoriasClient({
                   <div>
                     <p className="text-sm font-medium">{t.description}</p>
                     <p className="text-xs text-slate-400">{formatDate(t.date)}</p>
-                    {t.accountName && (
-                      <p className="text-[11px] text-slate-300">{t.accountName}</p>
-                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span
@@ -344,8 +353,33 @@ export function CategoriasClient({
   }
 
   // === VISTA PRINCIPAL DE CATEGORÍAS ===
+  const disponible = summary.totalIncome - summary.totalFixed;
+
   return (
     <div className="space-y-6">
+      {/* Resumen financiero */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-xs text-slate-500">Ingresos fijos</p>
+          <p className="text-lg font-bold text-emerald-600">{formatCLP(summary.totalIncome)}</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-xs text-slate-500">Gastos fijos</p>
+          <p className="text-lg font-bold text-slate-700">{formatCLP(summary.totalFixed)}</p>
+          <p className="text-xs text-slate-400">Pagado: {formatCLP(summary.paidFixed)}</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-xs text-slate-500">Disponible variable</p>
+          <p className="text-lg font-bold text-blue-600">{formatCLP(disponible)}</p>
+        </div>
+        <div className="bg-white rounded-xl p-4 shadow-sm">
+          <p className="text-xs text-slate-500">Gastado variable</p>
+          <p className={`text-lg font-bold ${summary.totalVariableSpent > disponible ? "text-red-500" : "text-orange-500"}`}>
+            {formatCLP(summary.totalVariableSpent)}
+          </p>
+        </div>
+      </div>
+
       {/* Botones de acción */}
       <div className="flex gap-3 flex-wrap">
         <button
@@ -368,7 +402,7 @@ export function CategoriasClient({
         )}
       </div>
 
-      {/* Formulario */}
+      {/* Formulario crear categoría */}
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -380,7 +414,7 @@ export function CategoriasClient({
               name="name"
               required
               className="w-full px-3 py-2 border rounded-lg text-sm"
-              placeholder="Ej: Cuentas Casa, Carrete, Colegiatura..."
+              placeholder="Ej: Comida, Carrete, Bencina..."
             />
           </div>
           <div className="w-32">
@@ -394,17 +428,6 @@ export function CategoriasClient({
             </select>
           </div>
           <div className="w-40">
-            <label className="block text-xs text-slate-500 mb-1">
-              Limite mensual (opcional)
-            </label>
-            <input
-              name="budgetLimit"
-              type="number"
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              placeholder="150000"
-            />
-          </div>
-          <div className="w-40">
             <label className="block text-xs text-slate-500 mb-1">Prioridad</label>
             <select name="priority" className="w-full px-3 py-2 border rounded-lg text-sm">
               <option value="">Sin etiqueta</option>
@@ -413,13 +436,6 @@ export function CategoriasClient({
                   {p.label}
                 </option>
               ))}
-            </select>
-          </div>
-          <div className="w-40">
-            <label className="block text-xs text-slate-500 mb-1">Frecuencia</label>
-            <select name="frequency" className="w-full px-3 py-2 border rounded-lg text-sm">
-              <option value="recurrente">Recurrente</option>
-              <option value="ocasional">Ocasional</option>
             </select>
           </div>
           <button
@@ -438,17 +454,18 @@ export function CategoriasClient({
         </form>
       )}
 
-      {/* Grid de categorías - clickeables */}
+      {/* Grid de categorías */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((cat) => (
           <div
             key={cat.id}
-            className="bg-white rounded-xl p-5 shadow-sm border-l-4 hover:shadow-md transition-shadow"
+            className="bg-white rounded-xl p-5 shadow-sm border-l-4 hover:shadow-md transition-shadow cursor-pointer"
             style={{ borderLeftColor: cat.color ?? "#6B7280" }}
+            onClick={() => router.push(`/categorias?cat=${cat.id}`)}
           >
             {editingId === cat.id ? (
               /* Modo edición */
-              <div className="space-y-3">
+              <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">Nombre</label>
                   <input
@@ -457,38 +474,55 @@ export function CategoriasClient({
                     className="w-full px-3 py-2 border rounded-lg text-sm"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Color</label>
-                  <select
-                    value={editColor}
-                    onChange={(e) => setEditColor(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    {COLORS.map((c) => (
-                      <option key={c.value} value={c.value}>{c.name}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Color</label>
+                    <select
+                      value={editColor}
+                      onChange={(e) => setEditColor(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                    >
+                      {COLORS.map((c) => (
+                        <option key={c.value} value={c.value}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Prioridad</label>
+                    <select
+                      value={editPriority}
+                      onChange={(e) => setEditPriority(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="">Sin etiqueta</option>
+                      {PRIORITIES.map((p) => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Limite mensual</label>
-                  <input
-                    value={editBudget}
-                    onChange={(e) => setEditBudget(e.target.value)}
-                    type="number"
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                    placeholder="Sin limite"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Frecuencia</label>
-                  <select
-                    value={editFrequency}
-                    onChange={(e) => setEditFrequency(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg text-sm"
-                  >
-                    <option value="recurrente">Recurrente (todos los meses)</option>
-                    <option value="ocasional">Ocasional (no todos los meses)</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Limite mensual</label>
+                    <input
+                      value={editBudget}
+                      onChange={(e) => setEditBudget(e.target.value)}
+                      type="number"
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                      placeholder="Sin limite"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Frecuencia</label>
+                    <select
+                      value={editFrequency}
+                      onChange={(e) => setEditFrequency(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                    >
+                      <option value="recurrente">Recurrente</option>
+                      <option value="ocasional">Ocasional</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -508,16 +542,11 @@ export function CategoriasClient({
                 </div>
               </div>
             ) : (
-              /* Modo vista */
+              /* Modo vista — limpio */
               <>
                 <div className="flex items-start justify-between gap-2">
-                  <button
-                    onClick={() => router.push(`/categorias?cat=${cat.id}`)}
-                    className="text-left flex-1"
-                  >
-                    <h3 className="font-semibold text-slate-900">{cat.name}</h3>
-                  </button>
-                  <div className="flex items-center gap-1">
+                  <h3 className="font-semibold text-slate-900">{cat.name}</h3>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                     {cat.frequency === "ocasional" && (
                       <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
                         Ocasional
@@ -538,112 +567,39 @@ export function CategoriasClient({
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    {cat.name !== "Gastos Fijos" && <button
+                    <button
                       onClick={() => deleteCategory(cat.id)}
                       className="text-slate-300 hover:text-red-500 p-1 transition-colors"
                       title="Eliminar"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>}
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => router.push(`/categorias?cat=${cat.id}`)}
-                  className="text-left w-full"
-                >
-                  <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
-                    {formatCLP(cat.spentThisMonth)}
-                  </p>
-                  {cat.budgetLimit && (
-                    <div className="mt-2">
-                      <div className="flex justify-between text-xs text-slate-500">
-                        <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
-                        <span>de {formatCLP(cat.budgetLimit)}</span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
-                        <div
-                          className="h-2 rounded-full transition-all"
-                          style={{
-                            width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
-                            backgroundColor:
-                              cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
-                          }}
-                        />
-                      </div>
+                <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
+                  {formatCLP(cat.spentThisMonth)}
+                </p>
+                {cat.budgetLimit ? (
+                  <div className="mt-2">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
+                      <span>de {formatCLP(cat.budgetLimit)}</span>
                     </div>
-                  )}
+                    <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
+                      <div
+                        className="h-2 rounded-full transition-all"
+                        style={{
+                          width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
+                          backgroundColor:
+                            cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
                   <p className="text-xs text-slate-400 mt-2">
                     {cat.totalTransactions} transacciones
                   </p>
-                </button>
-                <select
-                  value={cat.priority ?? ""}
-                  onChange={(e) => updatePriority(cat.id, e.target.value || null)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="mt-2 text-xs border rounded px-2 py-1 w-full text-slate-500"
-                >
-                  <option value="">Sin etiqueta</option>
-                  {PRIORITIES.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label} — {p.desc}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Reglas asociadas a esta categoría */}
-                {(() => {
-                  const catRules = rules.filter((r) => r.categoryId === cat.id);
-                  return catRules.length > 0 ? (
-                    <div className="mt-2 space-y-1">
-                      {catRules.map((r) => (
-                        <div key={r.id} className="flex items-center justify-between bg-slate-50 rounded px-2 py-1">
-                          <span className="text-xs text-slate-600">
-                            {r.issender ? "📤" : "📝"} {r.keyword}
-                          </span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDeleteRule(r.id); }}
-                            className="text-slate-300 hover:text-red-500 p-0.5"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null;
-                })()}
-
-                {/* Agregar destinatario inline */}
-                {addingSenderId === cat.id ? (
-                  <div className="mt-2 flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      value={newSenderKeyword}
-                      onChange={(e) => setNewSenderKeyword(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") addSenderToCategory(cat.id); }}
-                      className="flex-1 px-2 py-1 border rounded text-xs"
-                      placeholder="Ej: merpago* whoosh"
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => addSenderToCategory(cat.id)}
-                      className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700"
-                    >
-                      <Check className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => { setAddingSenderId(null); setNewSenderKeyword(""); }}
-                      className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs hover:bg-slate-200"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setAddingSenderId(cat.id); setNewSenderKeyword(""); }}
-                    className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
-                  >
-                    <UserPlus className="w-3 h-3" />
-                    Asociar destinatario
-                  </button>
                 )}
               </>
             )}
@@ -651,7 +607,7 @@ export function CategoriasClient({
         ))}
       </div>
 
-      {/* Transacciones sin categoría */}
+      {/* Gastos sin categoría */}
       {uncategorized.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100">
           <div className="px-5 py-3 border-b border-slate-100">
@@ -660,7 +616,7 @@ export function CategoriasClient({
               Sin Categoria ({uncategorized.length})
             </h2>
             <p className="text-xs text-slate-400">
-              Asigna una categoria a estas transacciones
+              Solo gastos — asigna una categoria
             </p>
           </div>
           <div className="divide-y divide-slate-50">
@@ -671,11 +627,7 @@ export function CategoriasClient({
                   <p className="text-xs text-slate-400">{formatDate(t.date)}</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span
-                    className={`text-sm font-semibold ${
-                      t.amount >= 0 ? "text-emerald-600" : "text-red-500"
-                    }`}
-                  >
+                  <span className="text-sm font-semibold text-red-500">
                     {formatCLP(t.amount)}
                   </span>
                   <select
@@ -706,7 +658,7 @@ export function CategoriasClient({
         <div className="px-5 py-3 border-b border-slate-100">
           <h2 className="font-semibold text-slate-900">Reglas de Asignacion</h2>
           <p className="text-xs text-slate-400">
-            Define reglas para categorizar transacciones automaticamente
+            Asignan gastos automaticamente por descripcion o remitente
           </p>
         </div>
 
