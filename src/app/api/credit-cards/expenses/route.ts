@@ -86,6 +86,64 @@ export async function POST(request: Request) {
 }
 
 /**
+ * PATCH /api/credit-cards/expenses
+ * Editar una compra TC
+ */
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, description, totalAmount, installments, purchaseDate, categoryId } = body;
+
+    if (!id) return NextResponse.json({ error: "ID requerido" }, { status: 400 });
+
+    const updates: Record<string, unknown> = {};
+    if (description !== undefined) updates.description = description;
+    if (categoryId !== undefined) updates.categoryId = categoryId || null;
+
+    if (totalAmount !== undefined || installments !== undefined) {
+      // Si cambia monto o cuotas, recalcular
+      const existing = await prisma.creditCardExpense.findUnique({ where: { id } });
+      if (!existing) return NextResponse.json({ error: "No encontrado" }, { status: 404 });
+
+      const newTotal = totalAmount ?? existing.totalAmount;
+      const newInstallments = installments ?? existing.installments;
+      updates.totalAmount = newTotal;
+      updates.installments = newInstallments;
+      updates.installmentAmount = Math.round(newTotal / newInstallments);
+    }
+
+    if (purchaseDate !== undefined) {
+      const purchase = new Date(purchaseDate);
+      updates.purchaseDate = purchase;
+      const day = purchase.getDate();
+      const month = purchase.getMonth() + 1;
+      const year = purchase.getFullYear();
+
+      if (day <= 28) {
+        updates.billingStartMonth = month === 12 ? 1 : month + 1;
+        updates.billingStartYear = month === 12 ? year + 1 : year;
+      } else {
+        const next = month === 12 ? 1 : month + 1;
+        const nextY = month === 12 ? year + 1 : year;
+        updates.billingStartMonth = next === 12 ? 1 : next + 1;
+        updates.billingStartYear = next === 12 ? nextY + 1 : nextY;
+      }
+    }
+
+    const expense = await prisma.creditCardExpense.update({
+      where: { id },
+      data: updates,
+      include: { category: true },
+    });
+
+    return NextResponse.json(expense);
+  } catch (error) {
+    console.error("Error editando compra TC:", error);
+    return NextResponse.json({ error: "Error al editar" }, { status: 500 });
+  }
+}
+
+/**
  * DELETE /api/credit-cards/expenses?id=xxx
  */
 export async function DELETE(request: Request) {

@@ -426,6 +426,13 @@ export function GastosFijosClient({
             >
               Crear
             </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-sm font-medium"
+            >
+              Cancelar
+            </button>
           </div>
 
           {currency === "USD" && (
