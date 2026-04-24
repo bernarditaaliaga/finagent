@@ -37,6 +37,7 @@ export function GastosFijosClient({
     name: "", amount: "", amountUsd: "", currency: "CLP",
     dayOfMonth: "", categoryId: "", type: "expense", matchKeyword: "",
   });
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const today = new Date().getDate();
 
@@ -85,6 +86,32 @@ export function GastosFijosClient({
       setExpenses(expenses.filter((e) => e.id !== id));
     }
     setDeleting(null);
+  }
+
+  async function togglePaid(exp: FixedExpense) {
+    setToggling(exp.id);
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const paidThisMonth = exp.lastPaidAt && exp.lastPaidAt >= startOfMonth && exp.lastPaidAt < endOfMonth;
+
+    const res = await fetch("/api/fixed-expenses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: exp.id,
+        lastPaidAt: paidThisMonth ? null : new Date().toISOString(),
+      }),
+    });
+
+    if (res.ok) {
+      setExpenses(expenses.map((e) =>
+        e.id === exp.id
+          ? { ...e, lastPaidAt: paidThisMonth ? null : new Date().toISOString() }
+          : e
+      ));
+    }
+    setToggling(null);
   }
 
   function startEdit(exp: FixedExpense) {
@@ -295,15 +322,31 @@ export function GastosFijosClient({
             {exp.matchKeyword && (
               <p className="text-xs text-indigo-500">Detecta: {exp.matchKeyword}</p>
             )}
-            {paidThisMonth && (
-              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-0.5">
-                <Check className="w-3 h-3" />
-                Pagado este mes
-              </span>
-            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => togglePaid(exp)}
+            disabled={toggling === exp.id}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              paidThisMonth
+                ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                : "bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+            } disabled:opacity-50`}
+            title={paidThisMonth ? "Marcar como pendiente" : "Marcar como pagado"}
+          >
+            {paidThisMonth ? (
+              <>
+                <Check className="w-3.5 h-3.5" />
+                {isIncome ? "Recibido" : "Pagado"}
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-3.5 h-3.5" />
+                Pendiente
+              </>
+            )}
+          </button>
           <div className="text-right">
             <p className={`text-lg font-bold ${isIncome ? "text-emerald-600" : "text-slate-900"}`}>
               {isIncome ? "+" : ""}{formatCLP(exp.amount)}
