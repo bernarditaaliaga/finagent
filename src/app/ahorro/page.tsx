@@ -22,7 +22,7 @@ export default async function AhorroPage() {
     prisma.category.findMany({
       include: {
         transactions: {
-          where: { date: { gte: startOfMonth, lt: endOfMonth } },
+          where: { date: { gte: startOfMonth, lt: endOfMonth }, isIgnored: false },
           select: { amount: true },
         },
       },

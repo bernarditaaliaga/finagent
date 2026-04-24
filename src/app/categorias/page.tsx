@@ -29,19 +29,19 @@ export default async function CategoriasPage({
     create: { name: "Gastos Fijos", color: "#6B7280", priority: "esencial", frequency: "recurrente" },
   });
 
-  const [categories, uncategorizedRaw, rulesData, selectedCatTxns, fixedExpenses, fixedIncomes] = await Promise.all([
+  const [categories, uncategorizedRaw, rulesData, selectedCatTxns, fixedExpenses, fixedIncomes, creditCards] = await Promise.all([
     prisma.category.findMany({
       include: {
         transactions: {
-          where: { date: { gte: startOfMonth, lt: endOfMonth }, amount: { lt: 0 } },
+          where: { date: { gte: startOfMonth, lt: endOfMonth }, amount: { lt: 0 }, isIgnored: false },
           select: { amount: true },
         },
-        _count: { select: { transactions: { where: { amount: { lt: 0 } } } } },
+        _count: { select: { transactions: { where: { amount: { lt: 0 }, isIgnored: false } } } },
       },
       orderBy: { name: "asc" },
     }),
     prisma.transaction.findMany({
-      where: { categoryId: null, amount: { lt: 0 } },
+      where: { categoryId: null, amount: { lt: 0 }, isIgnored: false },
       orderBy: { date: "desc" },
       take: 50,
     }),
@@ -54,12 +54,14 @@ export default async function CategoriasPage({
           where: {
             categoryId: selectedCatId,
             date: { gte: startOfMonth, lt: endOfMonth },
+            isIgnored: false,
           },
           orderBy: { date: "desc" },
         })
       : Promise.resolve([]),
     prisma.fixedExpense.findMany({ where: { isActive: true, type: "expense" } }),
     prisma.fixedExpense.findMany({ where: { isActive: true, type: "income" } }),
+    prisma.creditCard.findMany({ where: { isTitular: true } }),
   ]);
 
   // Filtrar ruido bancario de sin categoría
@@ -117,13 +119,17 @@ export default async function CategoriasPage({
     accountName: t.accountName ?? null,
   }));
 
+  // Tarjeta de crédito: facturado y pagado
+  const ccFacturado = creditCards.reduce((sum, c) => sum + c.facturadoMes, 0);
+  const ccPagado = creditCards.reduce((sum, c) => sum + c.pagadoMes, 0);
+
   // Resumen financiero
-  const totalVariableSpent = categoryData.reduce((sum, c) => sum + c.spentThisMonth, 0);
   const summary = {
     totalIncome: totalFixedIncome,
     totalFixed: totalFixedExpenses,
     paidFixed: paidFixedThisMonth,
-    totalVariableSpent,
+    ccFacturado,
+    ccPagado,
   };
 
   return (

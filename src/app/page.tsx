@@ -6,8 +6,10 @@ import { DashboardClient } from "@/components/dashboard-client";
 export const dynamic = "force-dynamic";
 
 // Detecta movimientos de línea de crédito (no son ingreso/gasto real, son deuda)
+// EXCEPTO: "Traspaso a: Línea de cred..." = pago real de deuda
 function isCreditLineMovement(description: string): boolean {
   const d = description.toLowerCase();
+  if (d.includes("traspaso a:") && d.includes("linea de cred")) return false;
   return d.includes("linea de credito") || d.includes("linea de cred");
 }
 
@@ -41,6 +43,7 @@ export default async function DashboardPage({
   try {
     const baseWhere = {
       date: { gte: startOfMonth, lt: endOfMonth },
+      isIgnored: false,
       ...(currentAccountId ? { accountId: currentAccountId } : {}),
     };
 

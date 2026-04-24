@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const month = searchParams.get("month"); // formato: "2026-04"
   const limit = parseInt(searchParams.get("limit") ?? "100");
 
-  const where: Record<string, unknown> = {};
+  const where: Record<string, unknown> = { isIgnored: false };
 
   if (categoryId) {
     where.categoryId = categoryId;

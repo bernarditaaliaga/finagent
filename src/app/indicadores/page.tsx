@@ -18,7 +18,7 @@ export default async function IndicadoresPage() {
       return {} as typeof indicators;
     }),
     prisma.transaction.findMany({
-      where: { date: { gte: sixMonthsAgo } },
+      where: { date: { gte: sixMonthsAgo }, isIgnored: false },
       select: { amount: true, date: true, description: true },
     }),
   ]);
@@ -43,11 +43,8 @@ export default async function IndicadoresPage() {
     });
   }
 
-  // Single pass over transactions
+  // Single pass over transactions (isIgnored already filtered in query)
   for (const t of allTxns) {
-    const desc = t.description.toLowerCase();
-    if (desc.includes("linea de credito") || desc.includes("linea de cred")) continue;
-
     const td = new Date(t.date);
     const key = `${td.getFullYear()}-${td.getMonth()}`;
     const bucket = monthBuckets.get(key);

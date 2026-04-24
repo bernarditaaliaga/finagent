@@ -20,6 +20,7 @@ model Transaction {
   accountName String?
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id])
+  isIgnored   Boolean  @default(false) // true = no cuenta como gasto/ingreso real
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

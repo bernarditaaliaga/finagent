@@ -67,14 +67,14 @@ export async function POST(request: Request) {
       prisma.category.findMany({
         include: {
           transactions: {
-            where: { date: { gte: startOfMonth, lt: endOfMonth } },
+            where: { date: { gte: startOfMonth, lt: endOfMonth }, isIgnored: false },
             select: { amount: true },
           },
         },
       }),
       prisma.fixedExpense.findMany({ where: { isActive: true } }),
       prisma.transaction.findMany({
-        where: { date: { gte: startOfMonth, lt: endOfMonth } },
+        where: { date: { gte: startOfMonth, lt: endOfMonth }, isIgnored: false },
         select: { amount: true, description: true, date: true, categoryId: true },
       }),
       prisma.bankAccount.findMany(),
@@ -82,7 +82,7 @@ export async function POST(request: Request) {
         include: { category: true },
       }),
       prisma.transaction.findMany({
-        where: { date: { gte: threeMonthsAgo, lt: startOfMonth } },
+        where: { date: { gte: threeMonthsAgo, lt: startOfMonth }, isIgnored: false },
         select: { amount: true, categoryId: true, date: true },
       }),
     ]);
@@ -112,12 +112,9 @@ export async function POST(request: Request) {
     const totalPendingIncome = pendingFixedIncome.reduce((sum, e) => sum + e.amount, 0);
     const totalPaidIncome = paidFixedIncome.reduce((sum, e) => sum + e.amount, 0);
 
-    // Gastos variables ya realizados
+    // Gastos variables ya realizados (isIgnored ya filtrado en la query)
     const spentSoFar = thisMonthTxns
-      .filter((t) => {
-        const d = t.description.toLowerCase();
-        return t.amount < 0 && !d.includes("linea de credito") && !d.includes("linea de cred");
-      })
+      .filter((t) => t.amount < 0)
       .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
     // === CUOTAS TC ===
@@ -171,8 +168,8 @@ export async function POST(request: Request) {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     const daysRemaining = daysInMonth - currentDay;
 
-    // === ANÁLISIS POR CATEGORÍA (solo gastos variables — gastos fijos ya no tienen categoría) ===
-    const categoryInfo = categories.filter((cat) => cat.frequency !== "ocasional").map((cat) => {
+    // === ANÁLISIS POR CATEGORÍA (solo gastos variables — excluir "Gastos Fijos" y ocasionales) ===
+    const categoryInfo = categories.filter((cat) => cat.frequency !== "ocasional" && cat.name !== "Gastos Fijos").map((cat) => {
       const currentSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       const historicalForCat = historicalTxns.filter((t) => t.categoryId === cat.id);
       const monthsWithData = new Set(

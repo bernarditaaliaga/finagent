@@ -110,6 +110,20 @@ export async function POST() {
         const postDate = (mov.post_date as string) || (mov.postDate as string) || new Date().toISOString();
         const currency = (mov.currency as string) ?? "CLP";
 
+        // Auto-ignorar movimientos internos que no son gasto/ingreso real
+        // PERO: pagar la línea de crédito SÍ es un gasto real (devuelves deuda)
+        const descLower = description.toLowerCase();
+        const isPayingCreditLine =
+          descLower.includes("traspaso a:") && descLower.includes("linea de cred");
+        const shouldIgnore = !isPayingCreditLine && (
+          descLower.includes("linea de cred") ||
+          descLower.includes("linea de credito") ||
+          descLower.includes("transferencia desde linea") ||
+          descLower.includes("amortizacion a linea") ||
+          descLower.startsWith("traspaso a:") ||
+          descLower.startsWith("traspaso de:")
+        );
+
         allUpserts.push(
           prisma.transaction.upsert({
             where: { fintocId: movId },
@@ -127,6 +141,7 @@ export async function POST() {
               currency,
               accountId: account.id as string,
               accountName: fullAccountName,
+              isIgnored: shouldIgnore,
             },
           })
         );
@@ -181,7 +196,7 @@ async function detectFixedExpensePayments() {
         },
       }),
       prisma.transaction.findMany({
-        where: { date: { gte: startOfMonth, lt: endOfMonth } },
+        where: { date: { gte: startOfMonth, lt: endOfMonth }, isIgnored: false },
         select: { description: true, amount: true, date: true },
       }),
     ]);

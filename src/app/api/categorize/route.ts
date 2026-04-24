@@ -59,7 +59,7 @@ export async function POST() {
   try {
     // 1. Get all uncategorized transactions
     const uncategorized = await prisma.transaction.findMany({
-      where: { categoryId: null },
+      where: { categoryId: null, isIgnored: false },
     });
 
     const total = uncategorized.length;

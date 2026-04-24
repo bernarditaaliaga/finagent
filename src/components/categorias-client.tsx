@@ -21,7 +21,8 @@ interface Summary {
   totalIncome: number;
   totalFixed: number;
   paidFixed: number;
-  totalVariableSpent: number;
+  ccFacturado: number;
+  ccPagado: number;
 }
 
 const PRIORITIES = [
@@ -353,12 +354,11 @@ export function CategoriasClient({
   }
 
   // === VISTA PRINCIPAL DE CATEGORÍAS ===
-  const disponible = summary.totalIncome - summary.totalFixed;
 
   return (
     <div className="space-y-6">
       {/* Resumen financiero */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-white rounded-xl p-4 shadow-sm">
           <p className="text-xs text-slate-500">Ingresos fijos</p>
           <p className="text-lg font-bold text-emerald-600">{formatCLP(summary.totalIncome)}</p>
@@ -369,14 +369,9 @@ export function CategoriasClient({
           <p className="text-xs text-slate-400">Pagado: {formatCLP(summary.paidFixed)}</p>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Disponible variable</p>
-          <p className="text-lg font-bold text-blue-600">{formatCLP(disponible)}</p>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Gastado variable</p>
-          <p className={`text-lg font-bold ${summary.totalVariableSpent > disponible ? "text-red-500" : "text-orange-500"}`}>
-            {formatCLP(summary.totalVariableSpent)}
-          </p>
+          <p className="text-xs text-slate-500">Linea credito facturado este mes</p>
+          <p className="text-lg font-bold text-blue-600">{formatCLP(summary.ccFacturado)}</p>
+          <p className="text-xs text-slate-400">Pagado: {formatCLP(summary.ccPagado)}</p>
         </div>
       </div>
 

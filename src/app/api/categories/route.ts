@@ -16,10 +16,11 @@ export async function GET() {
         where: {
           date: { gte: startOfMonth, lt: endOfMonth },
           amount: { lt: 0 },
+          isIgnored: false,
         },
         select: { amount: true },
       },
-      _count: { select: { transactions: { where: { amount: { lt: 0 } } } } },
+      _count: { select: { transactions: { where: { amount: { lt: 0 }, isIgnored: false } } } },
     },
     orderBy: { name: "asc" },
   });
