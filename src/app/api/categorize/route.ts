@@ -50,7 +50,10 @@ const COLOR_MAP: Record<string, string> = {
 
 /**
  * POST /api/categorize
- * Auto-categoriza transacciones sin categoria usando reglas por defecto y del usuario
+ * Auto-categoriza transacciones sin categoria usando:
+ * 1. matchKeyword de gastos/ingresos fijos → categoría "Gastos Fijos"
+ * 2. Reglas del usuario (CategoryRule)
+ * 3. Reglas por defecto
  */
 export async function POST() {
   try {
@@ -70,7 +73,28 @@ export async function POST() {
       existingCategories.map((c) => [c.name.toLowerCase(), c])
     );
 
-    // 3. Get user-defined rules from CategoryRule
+    // 3. Ensure "Gastos Fijos" category exists
+    let gastosFijosCategory = categoryByName.get("gastos fijos");
+    if (!gastosFijosCategory) {
+      gastosFijosCategory = await prisma.category.create({
+        data: {
+          name: "Gastos Fijos",
+          color: "#6366f1",
+          priority: "esencial",
+        },
+      });
+      categoryByName.set("gastos fijos", gastosFijosCategory);
+    }
+
+    // 4. Get fixed expenses with matchKeyword for auto-detection
+    const fixedExpenses = await prisma.fixedExpense.findMany({
+      where: {
+        isActive: true,
+        matchKeyword: { not: null },
+      },
+    });
+
+    // 5. Get user-defined rules from CategoryRule
     const userRules = await prisma.categoryRule.findMany({
       include: { category: true },
     });
@@ -81,11 +105,24 @@ export async function POST() {
       const descLower = tx.description.toLowerCase();
       let matchedCategoryId: string | null = null;
 
-      // Check user-defined rules first (higher priority)
-      for (const rule of userRules) {
-        if (descLower.includes(rule.keyword.toLowerCase())) {
-          matchedCategoryId = rule.categoryId;
+      // Check fixed expense matchKeywords first → assign to "Gastos Fijos" category
+      for (const fe of fixedExpenses) {
+        if (!fe.matchKeyword) continue;
+        const keyword = fe.matchKeyword.toLowerCase();
+        if (descLower.includes(keyword)) {
+          // If the fixed expense has its own category, use that; otherwise use "Gastos Fijos"
+          matchedCategoryId = fe.categoryId ?? gastosFijosCategory.id;
           break;
+        }
+      }
+
+      // Check user-defined rules (higher priority than defaults)
+      if (!matchedCategoryId) {
+        for (const rule of userRules) {
+          if (descLower.includes(rule.keyword.toLowerCase())) {
+            matchedCategoryId = rule.categoryId;
+            break;
+          }
         }
       }
 

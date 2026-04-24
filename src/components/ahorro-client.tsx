@@ -39,9 +39,13 @@ interface PlanResult {
   suggestedTarget: number | null;
   startMonth: number;
   startYear: number;
-  budgets: { categoryId: string; categoryName: string; budgetAmount: number }[];
+  budgets: { categoryId: string; categoryName: string; budgetAmount: number; recommendation?: string }[];
   income: number;
+  totalFixedIncome?: number;
   fixedExpenses: number;
+  pendingExpenses?: number;
+  ccCuotasThisMonth?: number;
+  ccCuotasNextMonth?: number;
   spentSoFar: number;
   saldoActual: number;
   savingsTarget: number;
@@ -407,22 +411,44 @@ export function AhorroClient({
             {/* Resultado del plan */}
             {planResult && (
               <div className="space-y-4 pt-4 border-t border-slate-100">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Ingresos del mes</p>
-                    <p className="text-lg font-bold text-emerald-600">{formatCLP(planResult.income)}</p>
+                    <p className="text-xs text-slate-500">Ingresos fijos</p>
+                    <p className="text-lg font-bold text-emerald-600">
+                      {formatCLP(planResult.totalFixedIncome ?? planResult.income)}
+                    </p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
                     <p className="text-xs text-slate-500">Gastos fijos</p>
                     <p className="text-lg font-bold text-slate-700">{formatCLP(planResult.fixedExpenses)}</p>
+                    {(planResult.pendingExpenses ?? 0) > 0 && (
+                      <p className="text-[11px] text-amber-600">
+                        Pendiente: {formatCLP(planResult.pendingExpenses!)}
+                      </p>
+                    )}
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-500">Ya gastado</p>
+                    <p className="text-xs text-slate-500">Cuotas TC</p>
+                    <p className="text-lg font-bold text-orange-600">
+                      {formatCLP(planResult.ccCuotasThisMonth ?? 0)}
+                    </p>
+                    {(planResult.ccCuotasNextMonth ?? 0) > 0 && (
+                      <p className="text-[11px] text-slate-400">
+                        Prox. mes: {formatCLP(planResult.ccCuotasNextMonth!)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Ya gastado (variable)</p>
                     <p className="text-lg font-bold text-red-500">{formatCLP(planResult.spentSoFar)}</p>
                   </div>
                   <div className="bg-slate-50 rounded-lg p-3">
                     <p className="text-xs text-slate-500">Saldo actual</p>
                     <p className="text-lg font-bold text-blue-600">{formatCLP(planResult.saldoActual)}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Meta de ahorro</p>
+                    <p className="text-lg font-bold text-purple-600">{formatCLP(planResult.savingsTarget)}</p>
                   </div>
                 </div>
 
@@ -483,11 +509,16 @@ export function AhorroClient({
                     <h4 className="text-sm font-semibold text-slate-700 mb-2">Presupuesto por categoria</h4>
                     <div className="space-y-2">
                       {planResult.budgets.map((b) => (
-                        <div key={b.categoryId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
-                          <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
-                          <span className="text-sm font-bold text-slate-700">
-                            max. {formatCLP(b.budgetAmount)}
-                          </span>
+                        <div key={b.categoryId} className="py-3 px-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
+                            <span className="text-sm font-bold text-slate-700">
+                              max. {formatCLP(b.budgetAmount)}
+                            </span>
+                          </div>
+                          {b.recommendation && (
+                            <p className="text-xs text-slate-500 mt-1">{b.recommendation}</p>
+                          )}
                         </div>
                       ))}
                     </div>
