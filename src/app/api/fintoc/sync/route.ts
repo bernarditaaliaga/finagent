@@ -124,6 +124,9 @@ export async function POST() {
       data: { lastSync: new Date() },
     });
 
+    // Auto-detectar pagos de gastos/ingresos fijos
+    await detectFixedExpensePayments();
+
     return NextResponse.json({
       success: true,
       imported: totalImported,
@@ -136,5 +139,61 @@ export async function POST() {
       { error: `Error al sincronizar: ${errorMsg}` },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Detecta automáticamente pagos de gastos/ingresos fijos
+ * buscando transacciones del mes actual que coincidan con matchKeyword
+ */
+async function detectFixedExpensePayments() {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const fixedExpenses = await prisma.fixedExpense.findMany({
+      where: {
+        isActive: true,
+        matchKeyword: { not: null },
+      },
+    });
+
+    if (fixedExpenses.length === 0) return;
+
+    const monthTransactions = await prisma.transaction.findMany({
+      where: { date: { gte: startOfMonth, lt: endOfMonth } },
+      select: { description: true, amount: true, date: true },
+    });
+
+    for (const expense of fixedExpenses) {
+      if (!expense.matchKeyword) continue;
+
+      const keyword = expense.matchKeyword.toLowerCase();
+      const isIncome = expense.type === "income";
+
+      // Buscar transacción que contenga el keyword
+      const match = monthTransactions.find((t) => {
+        const descMatch = t.description.toLowerCase().includes(keyword);
+        // Para gastos: monto negativo. Para ingresos: monto positivo
+        const signMatch = isIncome ? t.amount > 0 : t.amount < 0;
+        return descMatch && signMatch;
+      });
+
+      if (match) {
+        // Encontró el pago → actualizar lastPaidAt
+        const alreadyPaid = expense.lastPaidAt &&
+          expense.lastPaidAt >= startOfMonth && expense.lastPaidAt < endOfMonth;
+
+        if (!alreadyPaid) {
+          await prisma.fixedExpense.update({
+            where: { id: expense.id },
+            data: { lastPaidAt: match.date },
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error detectando pagos fijos:", e);
   }
 }

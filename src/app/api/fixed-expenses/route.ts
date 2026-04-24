@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, amount, amountUsd, currency, dayOfMonth, categoryId, type } = body;
+    const { name, amount, amountUsd, currency, dayOfMonth, categoryId, type, matchKeyword } = body;
 
     let finalAmount = amount;
 
@@ -48,6 +48,7 @@ export async function POST(request: Request) {
         dayOfMonth: dayOfMonth || null,
         categoryId: categoryId || null,
         type: type || "expense",
+        matchKeyword: matchKeyword || null,
         isActive: true,
       },
     });

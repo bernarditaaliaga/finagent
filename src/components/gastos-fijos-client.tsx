@@ -15,6 +15,7 @@ interface FixedExpense {
   isActive: boolean;
   lastPaidAt: string | null;
   categoryId: string | null;
+  matchKeyword: string | null;
   categoryName: string | null;
   categoryColor: string | null;
 }
@@ -34,7 +35,7 @@ export function GastosFijosClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState({
     name: "", amount: "", amountUsd: "", currency: "CLP",
-    dayOfMonth: "", categoryId: "", type: "expense",
+    dayOfMonth: "", categoryId: "", type: "expense", matchKeyword: "",
   });
 
   const today = new Date().getDate();
@@ -56,6 +57,7 @@ export function GastosFijosClient({
       type,
       categoryId: type === "income" ? null : (formData.get("categoryId") || null),
       dayOfMonth: dayValue ? parseInt(dayValue) : null,
+      matchKeyword: (formData.get("matchKeyword") as string) || null,
     };
 
     if (currency === "USD") {
@@ -95,6 +97,7 @@ export function GastosFijosClient({
       dayOfMonth: exp.dayOfMonth?.toString() ?? "",
       categoryId: exp.categoryId ?? "",
       type: exp.type,
+      matchKeyword: exp.matchKeyword ?? "",
     });
   }
 
@@ -106,6 +109,7 @@ export function GastosFijosClient({
       type: editData.type,
       dayOfMonth: editData.dayOfMonth ? parseInt(editData.dayOfMonth) : null,
       categoryId: editData.type === "income" ? null : (editData.categoryId || null),
+      matchKeyword: editData.matchKeyword || null,
     };
 
     if (editData.currency === "USD") {
@@ -127,7 +131,11 @@ export function GastosFijosClient({
 
   function renderCard(exp: FixedExpense) {
     const isIncome = exp.type === "income";
-    const isPending = exp.isActive && exp.dayOfMonth && today >= exp.dayOfMonth && !exp.lastPaidAt;
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    const paidThisMonth = exp.lastPaidAt && exp.lastPaidAt >= startOfMonth && exp.lastPaidAt < endOfMonth;
+    const isPending = exp.isActive && exp.dayOfMonth && today >= exp.dayOfMonth && !paidThisMonth;
 
     if (editingId === exp.id) {
       return (
@@ -217,6 +225,15 @@ export function GastosFijosClient({
                 </select>
               </div>
             )}
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-xs text-slate-500 mb-1">Detectar pago (keyword)</label>
+              <input
+                value={editData.matchKeyword}
+                onChange={(e) => setEditData({ ...editData, matchKeyword: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="Ej: Sandra Perez"
+              />
+            </div>
           </div>
           <div className="flex gap-2">
             <button
@@ -275,6 +292,15 @@ export function GastosFijosClient({
               {exp.dayOfMonth ? `Dia ${exp.dayOfMonth} de cada mes` : "Sin dia definido"}
               {exp.categoryName && ` · ${exp.categoryName}`}
             </p>
+            {exp.matchKeyword && (
+              <p className="text-xs text-indigo-500">Detecta: {exp.matchKeyword}</p>
+            )}
+            {paidThisMonth && (
+              <span className="inline-flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-0.5">
+                <Check className="w-3 h-3" />
+                Pagado este mes
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -419,6 +445,15 @@ export function GastosFijosClient({
                 </select>
               </div>
             )}
+
+            <div className="w-44">
+              <label className="block text-xs text-slate-500 mb-1">Detectar pago</label>
+              <input
+                name="matchKeyword"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="Ej: Sandra Perez"
+              />
+            </div>
 
             <button
               type="submit"

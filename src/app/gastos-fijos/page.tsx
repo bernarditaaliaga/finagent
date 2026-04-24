@@ -24,6 +24,7 @@ export default async function GastosFijosPage() {
     isActive: e.isActive,
     lastPaidAt: e.lastPaidAt?.toISOString() ?? null,
     categoryId: e.categoryId,
+    matchKeyword: e.matchKeyword,
     categoryName: e.category?.name ?? null,
     categoryColor: e.category?.color ?? null,
   }));
