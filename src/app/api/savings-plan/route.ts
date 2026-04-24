@@ -169,8 +169,12 @@ export async function POST(request: Request) {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     const daysRemaining = daysInMonth - currentDay;
 
-    // === ANÁLISIS POR CATEGORÍA ===
-    const categoryInfo = categories.map((cat) => {
+    // === ANÁLISIS POR CATEGORÍA (excluir categorías de gastos fijos, ya contados arriba) ===
+    const fixedCategoryIds = new Set(
+      fixedExpenses.map((e) => e.categoryId).filter(Boolean) as string[]
+    );
+
+    const categoryInfo = categories.filter((cat) => !fixedCategoryIds.has(cat.id)).map((cat) => {
       const currentSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       const historicalForCat = historicalTxns.filter((t) => t.categoryId === cat.id);
       const monthsWithData = new Set(
@@ -248,7 +252,8 @@ TARJETA DE CRÉDITO:
 
 GASTOS VARIABLES YA REALIZADOS ESTE MES: $${spentSoFar.toLocaleString("es-CL")}
 
-═══ GASTOS POR CATEGORÍA (promedio mensual y prioridad) ═══
+═══ GASTOS VARIABLES POR CATEGORÍA (promedio mensual y prioridad) ═══
+(NOTA: estas categorías son SOLO gastos variables. Los gastos fijos ya están contados arriba y NO aparecen aquí. No los cuentes dos veces.)
 ${categoryInfo.filter((c) => c.avgMonthly > 0 || c.currentSpent > 0).map((c) => `- ${c.name} [${c.priority}]: promedio mensual $${c.avgMonthly.toLocaleString("es-CL")}, este mes $${c.currentSpent.toLocaleString("es-CL")}`).join("\n")}
 
 ═══ PRIORIDADES (qué tan reducible es cada categoría) ═══
