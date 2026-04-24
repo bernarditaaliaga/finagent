@@ -73,18 +73,8 @@ export async function POST() {
       existingCategories.map((c) => [c.name.toLowerCase(), c])
     );
 
-    // 3. Ensure "Gastos Fijos" category exists
-    let gastosFijosCategory = categoryByName.get("gastos fijos");
-    if (!gastosFijosCategory) {
-      gastosFijosCategory = await prisma.category.create({
-        data: {
-          name: "Gastos Fijos",
-          color: "#6366f1",
-          priority: "esencial",
-        },
-      });
-      categoryByName.set("gastos fijos", gastosFijosCategory);
-    }
+    // 3. Get "Gastos Fijos" category if it exists (no auto-create)
+    const gastosFijosCategory = categoryByName.get("gastos fijos") ?? null;
 
     // 4. Get fixed expenses with matchKeyword for auto-detection
     const fixedExpenses = await prisma.fixedExpense.findMany({
@@ -105,13 +95,12 @@ export async function POST() {
       const descLower = tx.description.toLowerCase();
       let matchedCategoryId: string | null = null;
 
-      // Check fixed expense matchKeywords first → assign to "Gastos Fijos" category
+      // Check fixed expense matchKeywords first → assign to its category or "Gastos Fijos"
       for (const fe of fixedExpenses) {
         if (!fe.matchKeyword) continue;
         const keyword = fe.matchKeyword.toLowerCase();
         if (descLower.includes(keyword)) {
-          // If the fixed expense has its own category, use that; otherwise use "Gastos Fijos"
-          matchedCategoryId = fe.categoryId ?? gastosFijosCategory.id;
+          matchedCategoryId = fe.categoryId ?? gastosFijosCategory?.id ?? null;
           break;
         }
       }
@@ -126,26 +115,15 @@ export async function POST() {
         }
       }
 
-      // If no user rule matched, check default rules
+      // If no user rule matched, check default rules (only for existing categories)
       if (!matchedCategoryId) {
         for (const [categoryName, keywords] of Object.entries(DEFAULT_RULES)) {
           const matched = keywords.some((kw) => descLower.includes(kw));
           if (matched) {
-            // Find or create the category
-            const nameLower = categoryName.toLowerCase();
-            let category = categoryByName.get(nameLower);
-
-            if (!category) {
-              category = await prisma.category.create({
-                data: {
-                  name: categoryName,
-                  color: COLOR_MAP[categoryName] ?? "#6366f1",
-                },
-              });
-              categoryByName.set(nameLower, category);
+            const category = categoryByName.get(categoryName.toLowerCase());
+            if (category) {
+              matchedCategoryId = category.id;
             }
-
-            matchedCategoryId = category.id;
             break;
           }
         }
