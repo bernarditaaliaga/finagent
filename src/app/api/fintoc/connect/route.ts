@@ -49,14 +49,14 @@ export async function POST(request: Request) {
       || (widgetData?.linkToken as string)
       || linkId;
 
-    // Guardar en BD
-    await prisma.bankLink.upsert({
-      where: { fintocLinkId: linkId },
-      update: {
-        lastSync: new Date(),
-      },
-      create: {
-        fintocLinkId: linkId,
+    console.log("=== CONNECT: saving linkToken ===", linkToken);
+
+    // Guardar en BD — fintocLinkId almacena el link_token para usar en API calls
+    // Borrar links anteriores y crear uno nuevo con el token correcto
+    await prisma.bankLink.deleteMany({});
+    await prisma.bankLink.create({
+      data: {
+        fintocLinkId: linkToken,
         bankName: institution?.name ?? "Banco de Chile",
         holderName: holderName,
         lastSync: new Date(),
