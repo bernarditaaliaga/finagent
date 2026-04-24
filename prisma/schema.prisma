@@ -58,8 +58,11 @@ model CategoryRule {
 model FixedExpense {
   id          String   @id @default(cuid())
   name        String   // "Cuenta de luz", "Internet"
-  amount      Float
-  dayOfMonth  Int      // día del mes en que se paga (1-28)
+  amount      Float    // monto en CLP (o estimado si es USD)
+  amountUsd   Float?   // monto original en USD (ej: 111.34)
+  currency    String   @default("CLP") // "CLP" o "USD"
+  dayOfMonth  Int?     // día del mes en que se paga (null = no se sabe)
+  type        String   @default("expense") // "expense" o "income"
   categoryId  String?
   category    Category? @relation(fields: [categoryId], references: [id])
   isActive    Boolean  @default(true)

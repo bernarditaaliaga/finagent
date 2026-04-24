@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "FixedExpense" ADD COLUMN     "amountUsd" DOUBLE PRECISION,
+ADD COLUMN     "currency" TEXT NOT NULL DEFAULT 'CLP',
+ADD COLUMN     "type" TEXT NOT NULL DEFAULT 'expense',
+ALTER COLUMN "dayOfMonth" DROP NOT NULL;

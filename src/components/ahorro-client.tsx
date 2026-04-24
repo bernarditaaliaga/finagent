@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCLP } from "@/lib/format";
-import { Plus, PiggyBank, Target, Sparkles, Check, AlertTriangle, X } from "lucide-react";
+import { Plus, PiggyBank, Target, Sparkles, Check, AlertTriangle, X, Trash2 } from "lucide-react";
 
 interface SavingsGoal {
   id: string;
@@ -76,6 +76,10 @@ export function AhorroClient({
   const [planResult, setPlanResult] = useState<PlanResult | null>(null);
   const [planSaved, setPlanSaved] = useState(false);
 
+  // Calcular ahorro total acumulado en metas
+  const totalSaved = goals.reduce((sum, g) => sum + g.currentAmount, 0);
+  const totalTarget = goals.reduce((sum, g) => sum + g.targetAmount, 0);
+
   async function handleCreateGoal(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -92,6 +96,13 @@ export function AhorroClient({
       const newGoal = await res.json();
       setGoals([{ ...newGoal, deadline: newGoal.deadline ?? null }, ...goals]);
       setShowGoalForm(false);
+    }
+  }
+
+  async function deleteGoal(id: string) {
+    const res = await fetch(`/api/savings?id=${id}`, { method: "DELETE" });
+    if (res.ok) {
+      setGoals(goals.filter((g) => g.id !== id));
     }
   }
 
@@ -147,6 +158,30 @@ export function AhorroClient({
 
   return (
     <div className="space-y-6">
+      {/* Resumen general */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500">Ahorro mensual</p>
+          <p className="text-2xl font-bold text-purple-600">
+            {activePlan ? formatCLP(activePlan.savingsTarget) : "$0"}
+          </p>
+          <p className="text-xs text-slate-400 mt-1">
+            {activePlan ? `${MONTH_NAMES[activePlan.month - 1]} ${activePlan.year}` : "Sin plan activo"}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
+          <p className="text-sm text-slate-500">Ahorrado en metas</p>
+          <p className="text-2xl font-bold text-emerald-600">{formatCLP(totalSaved)}</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {totalTarget > 0 ? `de ${formatCLP(totalTarget)}` : "Sin metas"}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 col-span-2 md:col-span-1">
+          <p className="text-sm text-slate-500">Metas activas</p>
+          <p className="text-2xl font-bold text-slate-900">{goals.length}</p>
+        </div>
+      </div>
+
       {/* Plan de Ahorro Activo */}
       {activePlan && (
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-6 text-white">
@@ -208,266 +243,292 @@ export function AhorroClient({
         </div>
       )}
 
-      {/* Botones de acción */}
-      <div className="flex gap-3 flex-wrap">
-        <button
-          onClick={() => { setShowPlanForm(!showPlanForm); setPlanResult(null); }}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
-        >
-          <Sparkles className="w-4 h-4" />
-          {activePlan ? "Nuevo Plan" : "Crear Plan de Ahorro"}
-        </button>
-        <button
-          onClick={() => setShowGoalForm(!showGoalForm)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          Meta de Ahorro
-        </button>
-      </div>
+      {/* Metas de Ahorro - ahora integradas con el plan */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <PiggyBank className="w-6 h-6 text-purple-600" />
+            <h2 className="text-lg font-semibold text-slate-900">Metas de Ahorro</h2>
+          </div>
+          <button
+            onClick={() => setShowGoalForm(!showGoalForm)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 text-sm font-medium"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Meta
+          </button>
+        </div>
 
-      {/* Formulario Plan de Ahorro */}
-      {showPlanForm && (
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 space-y-4">
-          <h3 className="font-semibold text-slate-900">¿Cuánto quieres ahorrar al mes?</h3>
-          <p className="text-sm text-slate-500">
-            El agente analizará tu situación actual y te dirá si es viable este mes o cuándo empezar.
-          </p>
-          <form onSubmit={handlePlanSubmit} className="flex gap-3 items-end">
-            <div className="flex-1 max-w-[200px]">
-              <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
+        {showGoalForm && (
+          <form
+            onSubmit={handleCreateGoal}
+            className="flex flex-wrap gap-3 items-end mb-4 pb-4 border-b border-slate-100"
+          >
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs text-slate-500 mb-1">Nombre</label>
               <input
-                name="savingsTarget"
+                name="name"
+                required
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="Ej: Vacaciones, Fondo emergencia..."
+              />
+            </div>
+            <div className="w-36">
+              <label className="block text-xs text-slate-500 mb-1">Meta ($)</label>
+              <input
+                name="targetAmount"
                 type="number"
                 required
                 className="w-full px-3 py-2 border rounded-lg text-sm"
-                placeholder="100000"
+                placeholder="500000"
+              />
+            </div>
+            <div className="w-40">
+              <label className="block text-xs text-slate-500 mb-1">Fecha limite</label>
+              <input
+                name="deadline"
+                type="date"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
               />
             </div>
             <button
               type="submit"
-              disabled={planLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
+              className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
             >
-              <Sparkles className="w-4 h-4" />
-              {planLoading ? "Analizando..." : "Analizar con IA"}
+              Crear
             </button>
           </form>
+        )}
 
-          {/* Resultado del plan */}
-          {planResult && (
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              {/* Estado actual del mes */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500">Ingresos del mes</p>
-                  <p className="text-lg font-bold text-emerald-600">{formatCLP(planResult.income)}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500">Gastos fijos</p>
-                  <p className="text-lg font-bold text-slate-700">{formatCLP(planResult.fixedExpenses)}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500">Ya gastado</p>
-                  <p className="text-lg font-bold text-red-500">{formatCLP(planResult.spentSoFar)}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-500">Saldo actual</p>
-                  <p className="text-lg font-bold text-blue-600">{formatCLP(planResult.saldoActual)}</p>
-                </div>
-              </div>
-
-              {/* No es viable nunca */}
-              {planResult.neverFeasible && (
-                <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 border border-red-200">
-                  <X className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-red-800">Objetivo no realista</p>
-                    <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
-                    {planResult.suggestedTarget && (
-                      <button
-                        onClick={() => generatePlan(planResult.suggestedTarget!)}
-                        className="text-sm text-purple-600 font-medium mt-2 hover:underline"
-                      >
-                        Probar con {formatCLP(planResult.suggestedTarget)} →
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Este mes */}
-              {!planResult.neverFeasible && (
-                <div className={`flex items-start gap-3 p-4 rounded-lg ${
-                  planResult.thisMonthFeasible
-                    ? "bg-emerald-50 border border-emerald-200"
-                    : "bg-orange-50 border border-orange-200"
-                }`}>
-                  {planResult.thisMonthFeasible ? (
-                    <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
-                  )}
-                  <div>
-                    <p className={`text-sm font-medium ${
-                      planResult.thisMonthFeasible ? "text-emerald-800" : "text-orange-800"
-                    }`}>
-                      {MONTH_NAMES[planResult.currentMonth - 1]}: {planResult.thisMonthFeasible ? "Viable" : "No recomendado"}
-                    </p>
-                    <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Próximo mes */}
-              {!planResult.neverFeasible && !planResult.thisMonthFeasible && planResult.nextMonthFeasible && (
-                <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                  <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-emerald-800">
-                      {MONTH_NAMES[planResult.nextMonth - 1]}: Viable
-                    </p>
-                    <p className="text-sm text-slate-600 mt-1">{planResult.nextMonthMessage}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Presupuestos por categoría */}
-              {planResult.budgets.length > 0 && !planResult.neverFeasible && (
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-700 mb-2">Presupuesto por categoría</h4>
-                  <div className="space-y-2">
-                    {planResult.budgets.map((b) => (
-                      <div key={b.categoryId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
-                        <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
-                        <span className="text-sm font-bold text-slate-700">
-                          máx. {formatCLP(b.budgetAmount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Botones aceptar */}
-              {!planResult.neverFeasible && !planSaved && (
-                <div className="flex gap-3">
-                  {planResult.thisMonthFeasible && (
-                    <button
-                      onClick={() => acceptPlan(planResult.currentMonth, planResult.currentYear)}
-                      className="flex-1 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
-                    >
-                      Activar desde {MONTH_NAMES[planResult.currentMonth - 1]}
-                    </button>
-                  )}
-                  {planResult.nextMonthFeasible && (
-                    <button
-                      onClick={() => acceptPlan(planResult.nextMonth, planResult.nextYear)}
-                      className={`flex-1 py-3 rounded-lg font-medium ${
-                        planResult.thisMonthFeasible
-                          ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                          : "bg-purple-600 text-white hover:bg-purple-700"
-                      }`}
-                    >
-                      Activar desde {MONTH_NAMES[planResult.nextMonth - 1]}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {planSaved && (
-                <div className="py-3 text-center text-emerald-600 font-medium bg-emerald-50 rounded-lg">
-                  ¡Plan guardado!
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Formulario Meta de Ahorro */}
-      {showGoalForm && (
-        <form
-          onSubmit={handleCreateGoal}
-          className="bg-white rounded-xl p-5 shadow-sm border border-slate-100 flex flex-wrap gap-3 items-end"
-        >
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs text-slate-500 mb-1">Nombre</label>
-            <input
-              name="name"
-              required
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              placeholder="Ej: Vacaciones, Fondo emergencia..."
-            />
-          </div>
-          <div className="w-36">
-            <label className="block text-xs text-slate-500 mb-1">Meta ($)</label>
-            <input
-              name="targetAmount"
-              type="number"
-              required
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-              placeholder="500000"
-            />
-          </div>
-          <div className="w-40">
-            <label className="block text-xs text-slate-500 mb-1">Fecha limite</label>
-            <input
-              name="deadline"
-              type="date"
-              className="w-full px-3 py-2 border rounded-lg text-sm"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
-          >
-            Crear
-          </button>
-        </form>
-      )}
-
-      {/* Metas de Ahorro */}
-      {goals.length > 0 && (
-        <>
-          <h2 className="text-lg font-semibold text-slate-900">Metas de Ahorro</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {goals.length > 0 ? (
+          <div className="space-y-3">
             {goals.map((goal) => {
               const progress = goal.targetAmount > 0
                 ? (goal.currentAmount / goal.targetAmount) * 100
                 : 0;
               return (
-                <div key={goal.id} className="bg-white rounded-xl p-5 shadow-sm border border-slate-100">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                      <PiggyBank className="w-5 h-5 text-purple-600" />
+                <div key={goal.id} className="flex items-center gap-4 p-3 bg-slate-50 rounded-lg">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-medium text-slate-900 text-sm">{goal.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">
+                          {formatCLP(goal.currentAmount)} / {formatCLP(goal.targetAmount)}
+                        </span>
+                        <button
+                          onClick={() => deleteGoal(goal.id)}
+                          className="text-slate-300 hover:text-red-500 p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{goal.name}</h3>
-                      {goal.deadline && (
-                        <p className="text-xs text-slate-400">
-                          Meta: {new Date(goal.deadline).toLocaleDateString("es-CL")}
-                        </p>
-                      )}
+                    <div className="w-full bg-slate-200 rounded-full h-2">
+                      <div
+                        className="h-2 rounded-full bg-purple-500 transition-all"
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[11px] text-slate-400">
+                        {goal.deadline && `Meta: ${new Date(goal.deadline).toLocaleDateString("es-CL")}`}
+                      </span>
+                      <span className="text-[11px] text-slate-400">{Math.round(progress)}%</span>
                     </div>
                   </div>
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-slate-500">{formatCLP(goal.currentAmount)}</span>
-                    <span className="font-medium text-slate-900">{formatCLP(goal.targetAmount)}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-3">
-                    <div
-                      className="h-3 rounded-full bg-purple-500 transition-all"
-                      style={{ width: `${Math.min(progress, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-slate-400 mt-2 text-right">{Math.round(progress)}% completado</p>
                 </div>
               );
             })}
           </div>
-        </>
-      )}
+        ) : (
+          <p className="text-sm text-slate-400 text-center py-4">No hay metas de ahorro creadas</p>
+        )}
+      </div>
+
+      {/* Crear/Nuevo Plan de Ahorro */}
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-100">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-6 h-6 text-purple-600" />
+            <h2 className="text-lg font-semibold text-slate-900">
+              {activePlan ? "Generar Nuevo Plan" : "Plan de Ahorro Mensual"}
+            </h2>
+          </div>
+          {!showPlanForm && (
+            <button
+              onClick={() => { setShowPlanForm(true); setPlanResult(null); }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
+            >
+              <Sparkles className="w-4 h-4" />
+              {activePlan ? "Nuevo Plan" : "Crear Plan"}
+            </button>
+          )}
+        </div>
+
+        {!showPlanForm && !activePlan && (
+          <p className="text-sm text-slate-500">
+            Crea un plan de ahorro mensual y el agente analizara tu situacion financiera para decirte si es viable.
+          </p>
+        )}
+
+        {showPlanForm && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500">
+              El agente analizara tu situacion actual y te dira si es viable este mes o cuando empezar.
+            </p>
+            <form onSubmit={handlePlanSubmit} className="flex gap-3 items-end">
+              <div className="flex-1 max-w-[200px]">
+                <label className="block text-xs text-slate-500 mb-1">Meta mensual ($)</label>
+                <input
+                  name="savingsTarget"
+                  type="number"
+                  required
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                  placeholder="100000"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={planLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium disabled:opacity-50"
+              >
+                <Sparkles className="w-4 h-4" />
+                {planLoading ? "Analizando..." : "Analizar con IA"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowPlanForm(false); setPlanResult(null); }}
+                className="px-3 py-2 text-slate-400 hover:text-slate-600 text-sm"
+              >
+                Cancelar
+              </button>
+            </form>
+
+            {/* Resultado del plan */}
+            {planResult && (
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Ingresos del mes</p>
+                    <p className="text-lg font-bold text-emerald-600">{formatCLP(planResult.income)}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Gastos fijos</p>
+                    <p className="text-lg font-bold text-slate-700">{formatCLP(planResult.fixedExpenses)}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Ya gastado</p>
+                    <p className="text-lg font-bold text-red-500">{formatCLP(planResult.spentSoFar)}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-xs text-slate-500">Saldo actual</p>
+                    <p className="text-lg font-bold text-blue-600">{formatCLP(planResult.saldoActual)}</p>
+                  </div>
+                </div>
+
+                {planResult.neverFeasible && (
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 border border-red-200">
+                    <X className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-red-800">Objetivo no realista</p>
+                      <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
+                      {planResult.suggestedTarget && (
+                        <button
+                          onClick={() => generatePlan(planResult.suggestedTarget!)}
+                          className="text-sm text-purple-600 font-medium mt-2 hover:underline"
+                        >
+                          Probar con {formatCLP(planResult.suggestedTarget)} →
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!planResult.neverFeasible && (
+                  <div className={`flex items-start gap-3 p-4 rounded-lg ${
+                    planResult.thisMonthFeasible
+                      ? "bg-emerald-50 border border-emerald-200"
+                      : "bg-orange-50 border border-orange-200"
+                  }`}>
+                    {planResult.thisMonthFeasible ? (
+                      <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className={`text-sm font-medium ${
+                        planResult.thisMonthFeasible ? "text-emerald-800" : "text-orange-800"
+                      }`}>
+                        {MONTH_NAMES[planResult.currentMonth - 1]}: {planResult.thisMonthFeasible ? "Viable" : "No recomendado"}
+                      </p>
+                      <p className="text-sm text-slate-600 mt-1">{planResult.thisMonthMessage}</p>
+                    </div>
+                  </div>
+                )}
+
+                {!planResult.neverFeasible && !planResult.thisMonthFeasible && planResult.nextMonthFeasible && (
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200">
+                    <Check className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800">
+                        {MONTH_NAMES[planResult.nextMonth - 1]}: Viable
+                      </p>
+                      <p className="text-sm text-slate-600 mt-1">{planResult.nextMonthMessage}</p>
+                    </div>
+                  </div>
+                )}
+
+                {planResult.budgets.length > 0 && !planResult.neverFeasible && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-700 mb-2">Presupuesto por categoria</h4>
+                    <div className="space-y-2">
+                      {planResult.budgets.map((b) => (
+                        <div key={b.categoryId} className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-lg">
+                          <span className="text-sm font-medium text-slate-900">{b.categoryName}</span>
+                          <span className="text-sm font-bold text-slate-700">
+                            max. {formatCLP(b.budgetAmount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!planResult.neverFeasible && !planSaved && (
+                  <div className="flex gap-3">
+                    {planResult.thisMonthFeasible && (
+                      <button
+                        onClick={() => acceptPlan(planResult.currentMonth, planResult.currentYear)}
+                        className="flex-1 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium"
+                      >
+                        Activar desde {MONTH_NAMES[planResult.currentMonth - 1]}
+                      </button>
+                    )}
+                    {planResult.nextMonthFeasible && (
+                      <button
+                        onClick={() => acceptPlan(planResult.nextMonth, planResult.nextYear)}
+                        className={`flex-1 py-3 rounded-lg font-medium ${
+                          planResult.thisMonthFeasible
+                            ? "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            : "bg-purple-600 text-white hover:bg-purple-700"
+                        }`}
+                      >
+                        Activar desde {MONTH_NAMES[planResult.nextMonth - 1]}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {planSaved && (
+                  <div className="py-3 text-center text-emerald-600 font-medium bg-emerald-50 rounded-lg">
+                    Plan guardado!
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

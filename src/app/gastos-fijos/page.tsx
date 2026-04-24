@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function GastosFijosPage() {
   const expenses = await prisma.fixedExpense.findMany({
     include: { category: true },
-    orderBy: { dayOfMonth: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 
   const categories = await prisma.category.findMany({
@@ -17,7 +17,10 @@ export default async function GastosFijosPage() {
     id: e.id,
     name: e.name,
     amount: e.amount,
+    amountUsd: e.amountUsd,
+    currency: e.currency,
     dayOfMonth: e.dayOfMonth,
+    type: e.type,
     isActive: e.isActive,
     lastPaidAt: e.lastPaidAt?.toISOString() ?? null,
     categoryName: e.category?.name ?? null,
@@ -29,8 +32,8 @@ export default async function GastosFijosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Gastos Fijos</h1>
-        <p className="text-slate-500">Pagos recurrentes programados cada mes</p>
+        <h1 className="text-2xl font-bold text-slate-900">Gastos e Ingresos Fijos</h1>
+        <p className="text-slate-500">Pagos recurrentes y fuentes de ingreso mensuales</p>
       </div>
       <GastosFijosClient expenses={serialized} categories={categoryOptions} />
     </div>
