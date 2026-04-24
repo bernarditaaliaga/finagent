@@ -168,29 +168,39 @@ Responde EXACTAMENTE en JSON:
 
 Solo JSON, sin texto adicional.`;
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
-    });
+    try {
+      const response = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        messages: [{ role: "user", content: prompt }],
+      });
 
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
-    const planData = JSON.parse(text);
+      const text = response.content[0].type === "text" ? response.content[0].text : "";
+      const planData = JSON.parse(text);
 
-    return NextResponse.json({
-      ...planData,
-      income: realIncome,
-      fixedExpenses: totalFixedExpenses,
-      spentSoFar,
-      saldoActual,
-      savingsTarget,
-      currentDay,
-      daysRemaining,
-      currentMonth,
-      currentYear,
-      nextMonth,
-      nextYear,
-    });
+      return NextResponse.json({
+        ...planData,
+        income: realIncome,
+        fixedExpenses: totalFixedExpenses,
+        spentSoFar,
+        saldoActual,
+        savingsTarget,
+        currentDay,
+        daysRemaining,
+        currentMonth,
+        currentYear,
+        nextMonth,
+        nextYear,
+      });
+    } catch (aiError) {
+      console.error("Claude API error, usando plan básico:", aiError);
+      // Fallback al plan básico si Claude falla
+      return generateBasicPlan({
+        savingsTarget, realIncome, totalFixedExpenses,
+        spentSoFar, saldoActual, currentDay, daysRemaining,
+        currentMonth, currentYear, nextMonth, nextYear, categoryInfo,
+      });
+    }
   } catch (error) {
     console.error("Error generando plan:", error);
     const msg = error instanceof Error ? error.message : String(error);
