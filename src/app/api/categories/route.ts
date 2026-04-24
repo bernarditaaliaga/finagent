@@ -92,3 +92,46 @@ export async function PATCH(request: Request) {
     );
   }
 }
+
+/**
+ * DELETE /api/categories?id=xxx
+ * Eliminar categoría. Las transacciones quedan sin categoría.
+ */
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    if (!id) {
+      return NextResponse.json({ error: "ID requerido" }, { status: 400 });
+    }
+
+    // Desasociar transacciones (quedan sin categoría)
+    await prisma.transaction.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: null },
+    });
+
+    // Eliminar reglas asociadas
+    await prisma.categoryRule.deleteMany({ where: { categoryId: id } });
+
+    // Eliminar budgets asociados
+    await prisma.categoryBudget.deleteMany({ where: { categoryId: id } });
+
+    // Eliminar gastos fijos asociados (desasociar)
+    await prisma.fixedExpense.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: null },
+    });
+
+    // Eliminar la categoría
+    await prisma.category.delete({ where: { id } });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error eliminando categoría:", error);
+    return NextResponse.json(
+      { error: "Error al eliminar categoría" },
+      { status: 500 }
+    );
+  }
+}

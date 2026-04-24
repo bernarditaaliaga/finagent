@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCLP } from "@/lib/format";
-import { Plus, CalendarClock, AlertCircle, Trash2, DollarSign, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { Plus, CalendarClock, AlertCircle, Trash2, DollarSign, ArrowDownCircle, ArrowUpCircle, Pencil, Check, X } from "lucide-react";
 
 interface FixedExpense {
   id: string;
@@ -14,6 +14,7 @@ interface FixedExpense {
   type: string;
   isActive: boolean;
   lastPaidAt: string | null;
+  categoryId: string | null;
   categoryName: string | null;
   categoryColor: string | null;
 }
@@ -30,6 +31,11 @@ export function GastosFijosClient({
   const [currency, setCurrency] = useState<"CLP" | "USD">("CLP");
   const [type, setType] = useState<"expense" | "income">("expense");
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState({
+    name: "", amount: "", amountUsd: "", currency: "CLP",
+    dayOfMonth: "", categoryId: "", type: "expense",
+  });
 
   const today = new Date().getDate();
 
@@ -48,7 +54,7 @@ export function GastosFijosClient({
       name: formData.get("name"),
       currency,
       type,
-      categoryId: formData.get("categoryId") || null,
+      categoryId: type === "income" ? null : (formData.get("categoryId") || null),
       dayOfMonth: dayValue ? parseInt(dayValue) : null,
     };
 
@@ -70,6 +76,7 @@ export function GastosFijosClient({
   }
 
   async function handleDelete(id: string) {
+    if (!confirm("¿Eliminar este registro?")) return;
     setDeleting(id);
     const res = await fetch(`/api/fixed-expenses?id=${id}`, { method: "DELETE" });
     if (res.ok) {
@@ -78,9 +85,159 @@ export function GastosFijosClient({
     setDeleting(null);
   }
 
+  function startEdit(exp: FixedExpense) {
+    setEditingId(exp.id);
+    setEditData({
+      name: exp.name,
+      amount: exp.currency === "USD" ? "" : exp.amount.toString(),
+      amountUsd: exp.amountUsd?.toString() ?? "",
+      currency: exp.currency,
+      dayOfMonth: exp.dayOfMonth?.toString() ?? "",
+      categoryId: exp.categoryId ?? "",
+      type: exp.type,
+    });
+  }
+
+  async function saveEdit(id: string) {
+    const payload: Record<string, unknown> = {
+      id,
+      name: editData.name,
+      currency: editData.currency,
+      type: editData.type,
+      dayOfMonth: editData.dayOfMonth ? parseInt(editData.dayOfMonth) : null,
+      categoryId: editData.type === "income" ? null : (editData.categoryId || null),
+    };
+
+    if (editData.currency === "USD") {
+      payload.amountUsd = parseFloat(editData.amountUsd);
+    } else {
+      payload.amount = parseFloat(editData.amount);
+    }
+
+    const res = await fetch("/api/fixed-expenses", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      window.location.reload();
+    }
+  }
+
   function renderCard(exp: FixedExpense) {
     const isIncome = exp.type === "income";
     const isPending = exp.isActive && exp.dayOfMonth && today >= exp.dayOfMonth && !exp.lastPaidAt;
+
+    if (editingId === exp.id) {
+      return (
+        <div key={exp.id} className="bg-white rounded-xl p-5 shadow-sm border border-blue-200 space-y-3">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setEditData({ ...editData, type: "expense" })}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                editData.type === "expense" ? "bg-red-100 text-red-700 border border-red-300" : "bg-slate-50 text-slate-400 border border-slate-200"
+              }`}
+            >
+              <ArrowUpCircle className="w-3 h-3" />
+              Gasto
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditData({ ...editData, type: "income" })}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium flex items-center justify-center gap-1 ${
+                editData.type === "income" ? "bg-emerald-100 text-emerald-700 border border-emerald-300" : "bg-slate-50 text-slate-400 border border-slate-200"
+              }`}
+            >
+              <ArrowDownCircle className="w-3 h-3" />
+              Ingreso
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="flex-1 min-w-[140px]">
+              <label className="block text-xs text-slate-500 mb-1">Nombre</label>
+              <input
+                value={editData.name}
+                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div className="w-20">
+              <label className="block text-xs text-slate-500 mb-1">Moneda</label>
+              <select
+                value={editData.currency}
+                onChange={(e) => setEditData({ ...editData, currency: e.target.value })}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              >
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+            <div className="w-28">
+              <label className="block text-xs text-slate-500 mb-1">
+                Monto ({editData.currency})
+              </label>
+              <input
+                value={editData.currency === "USD" ? editData.amountUsd : editData.amount}
+                onChange={(e) =>
+                  editData.currency === "USD"
+                    ? setEditData({ ...editData, amountUsd: e.target.value })
+                    : setEditData({ ...editData, amount: e.target.value })
+                }
+                type="number"
+                step={editData.currency === "USD" ? "0.01" : "1"}
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div className="w-20">
+              <label className="block text-xs text-slate-500 mb-1">Dia</label>
+              <input
+                value={editData.dayOfMonth}
+                onChange={(e) => setEditData({ ...editData, dayOfMonth: e.target.value })}
+                type="number"
+                min="1"
+                max="31"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+                placeholder="-"
+              />
+            </div>
+            {editData.type !== "income" && (
+              <div className="w-36">
+                <label className="block text-xs text-slate-500 mb-1">Categoria</label>
+                <select
+                  value={editData.categoryId}
+                  onChange={(e) => setEditData({ ...editData, categoryId: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg text-sm"
+                >
+                  <option value="">Sin categoria</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => saveEdit(exp.id)}
+              className="flex-1 flex items-center justify-center gap-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+            >
+              <Check className="w-4 h-4" />
+              Guardar
+            </button>
+            <button
+              onClick={() => setEditingId(null)}
+              className="flex-1 flex items-center justify-center gap-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200"
+            >
+              <X className="w-4 h-4" />
+              Cancelar
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         key={exp.id}
@@ -120,7 +277,7 @@ export function GastosFijosClient({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="text-right">
             <p className={`text-lg font-bold ${isIncome ? "text-emerald-600" : "text-slate-900"}`}>
               {isIncome ? "+" : ""}{formatCLP(exp.amount)}
@@ -129,6 +286,13 @@ export function GastosFijosClient({
               <p className="text-xs text-slate-400">US${exp.amountUsd.toFixed(2)}</p>
             )}
           </div>
+          <button
+            onClick={() => startEdit(exp)}
+            className="text-slate-300 hover:text-blue-500 transition-colors p-1"
+            title="Editar"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
           <button
             onClick={() => handleDelete(exp.id)}
             disabled={deleting === exp.id}
@@ -243,15 +407,18 @@ export function GastosFijosClient({
               />
             </div>
 
-            <div className="w-40">
-              <label className="block text-xs text-slate-500 mb-1">Categoria</label>
-              <select name="categoryId" className="w-full px-3 py-2 border rounded-lg text-sm">
-                <option value="">Sin categoria</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Solo mostrar categoría para gastos */}
+            {type === "expense" && (
+              <div className="w-40">
+                <label className="block text-xs text-slate-500 mb-1">Categoria</label>
+                <select name="categoryId" className="w-full px-3 py-2 border rounded-lg text-sm">
+                  <option value="">Sin categoria</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <button
               type="submit"

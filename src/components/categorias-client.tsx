@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCLP, formatDate } from "@/lib/format";
-import { Plus, Tag, Sparkles, Trash2, ArrowLeft } from "lucide-react";
+import { Plus, Tag, Sparkles, Trash2, ArrowLeft, Pencil, X, Check } from "lucide-react";
 
 interface Category {
   id: string;
@@ -70,6 +70,10 @@ export function CategoriasClient({
   const [showForm, setShowForm] = useState(false);
   const [rules, setRules] = useState(initialRules);
   const [autoCatLoading, setAutoCatLoading] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [editBudget, setEditBudget] = useState("");
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId)
@@ -132,6 +136,45 @@ export function CategoriasClient({
       setCategories(categories.map((c) =>
         c.id === categoryId ? { ...c, priority } : c
       ));
+    }
+  }
+
+  function startEdit(cat: Category) {
+    setEditingId(cat.id);
+    setEditName(cat.name);
+    setEditColor(cat.color ?? "#6B7280");
+    setEditBudget(cat.budgetLimit?.toString() ?? "");
+  }
+
+  async function saveEdit(catId: string) {
+    const res = await fetch("/api/categories", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: catId,
+        name: editName,
+        color: editColor,
+        budgetLimit: editBudget ? parseFloat(editBudget) : null,
+      }),
+    });
+    if (res.ok) {
+      setCategories(categories.map((c) =>
+        c.id === catId
+          ? { ...c, name: editName, color: editColor, budgetLimit: editBudget ? parseFloat(editBudget) : null }
+          : c
+      ));
+      setEditingId(null);
+    }
+  }
+
+  async function deleteCategory(catId: string) {
+    if (!confirm("¿Eliminar esta categoría? Las transacciones quedarán sin categoría.")) return;
+    const res = await fetch(`/api/categories?id=${catId}`, { method: "DELETE" });
+    if (res.ok) {
+      setCategories(categories.filter((c) => c.id !== catId));
+      if (selectedCategoryId === catId) {
+        router.push("/categorias");
+      }
     }
   }
 
@@ -356,64 +399,135 @@ export function CategoriasClient({
             className="bg-white rounded-xl p-5 shadow-sm border-l-4 hover:shadow-md transition-shadow"
             style={{ borderLeftColor: cat.color ?? "#6B7280" }}
           >
-            <div className="flex items-start justify-between gap-2">
-              <button
-                onClick={() => router.push(`/categorias?cat=${cat.id}`)}
-                className="text-left flex-1"
-              >
-                <h3 className="font-semibold text-slate-900">{cat.name}</h3>
-              </button>
-              {(() => {
-                const p = PRIORITIES.find((pr) => pr.value === cat.priority);
-                return p ? (
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.color}`}>
-                    {p.label}
-                  </span>
-                ) : null;
-              })()}
-            </div>
-            <button
-              onClick={() => router.push(`/categorias?cat=${cat.id}`)}
-              className="text-left w-full"
-            >
-              <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
-                {formatCLP(cat.spentThisMonth)}
-              </p>
-              {cat.budgetLimit && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
-                    <span>de {formatCLP(cat.budgetLimit)}</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
-                    <div
-                      className="h-2 rounded-full transition-all"
-                      style={{
-                        width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
-                        backgroundColor:
-                          cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
-                      }}
-                    />
+            {editingId === cat.id ? (
+              /* Modo edición */
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Nombre</label>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Color</label>
+                  <select
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                  >
+                    {COLORS.map((c) => (
+                      <option key={c.value} value={c.value}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Limite mensual</label>
+                  <input
+                    value={editBudget}
+                    onChange={(e) => setEditBudget(e.target.value)}
+                    type="number"
+                    className="w-full px-3 py-2 border rounded-lg text-sm"
+                    placeholder="Sin limite"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => saveEdit(cat.id)}
+                    className="flex-1 flex items-center justify-center gap-1 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+                  >
+                    <Check className="w-4 h-4" />
+                    Guardar
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="flex-1 flex items-center justify-center gap-1 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200"
+                  >
+                    <X className="w-4 h-4" />
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Modo vista */
+              <>
+                <div className="flex items-start justify-between gap-2">
+                  <button
+                    onClick={() => router.push(`/categorias?cat=${cat.id}`)}
+                    className="text-left flex-1"
+                  >
+                    <h3 className="font-semibold text-slate-900">{cat.name}</h3>
+                  </button>
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const p = PRIORITIES.find((pr) => pr.value === cat.priority);
+                      return p ? (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.color}`}>
+                          {p.label}
+                        </span>
+                      ) : null;
+                    })()}
+                    <button
+                      onClick={() => startEdit(cat)}
+                      className="text-slate-300 hover:text-blue-500 p-1 transition-colors"
+                      title="Editar"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => deleteCategory(cat.id)}
+                      className="text-slate-300 hover:text-red-500 p-1 transition-colors"
+                      title="Eliminar"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
-              )}
-              <p className="text-xs text-slate-400 mt-2">
-                {cat.totalTransactions} transacciones
-              </p>
-            </button>
-            <select
-              value={cat.priority ?? ""}
-              onChange={(e) => updatePriority(cat.id, e.target.value || null)}
-              onClick={(e) => e.stopPropagation()}
-              className="mt-2 text-xs border rounded px-2 py-1 w-full text-slate-500"
-            >
-              <option value="">Sin etiqueta</option>
-              {PRIORITIES.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label} — {p.desc}
-                </option>
-              ))}
-            </select>
+                <button
+                  onClick={() => router.push(`/categorias?cat=${cat.id}`)}
+                  className="text-left w-full"
+                >
+                  <p className="text-2xl font-bold mt-2" style={{ color: cat.color ?? "#6B7280" }}>
+                    {formatCLP(cat.spentThisMonth)}
+                  </p>
+                  {cat.budgetLimit && (
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>{Math.round((cat.spentThisMonth / cat.budgetLimit) * 100)}%</span>
+                        <span>de {formatCLP(cat.budgetLimit)}</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
+                        <div
+                          className="h-2 rounded-full transition-all"
+                          style={{
+                            width: `${Math.min((cat.spentThisMonth / cat.budgetLimit) * 100, 100)}%`,
+                            backgroundColor:
+                              cat.spentThisMonth > cat.budgetLimit ? "#ef4444" : (cat.color ?? "#6B7280"),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-400 mt-2">
+                    {cat.totalTransactions} transacciones
+                  </p>
+                </button>
+                <select
+                  value={cat.priority ?? ""}
+                  onChange={(e) => updatePriority(cat.id, e.target.value || null)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="mt-2 text-xs border rounded px-2 py-1 w-full text-slate-500"
+                >
+                  <option value="">Sin etiqueta</option>
+                  {PRIORITIES.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label} — {p.desc}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         ))}
       </div>
