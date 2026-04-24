@@ -1,40 +1,64 @@
 import { NextResponse } from "next/server";
-import { exchangeLinkToken } from "@/lib/fintoc";
+import { exchangeLinkToken, getLinkById } from "@/lib/fintoc";
 import { prisma } from "@/lib/db";
 
 /**
  * POST /api/fintoc/connect
  *
- * Recibe linkIntentId + exchangeToken del widget onSuccess,
- * llama al endpoint de exchange para obtener el link_token real,
- * y lo guarda en la BD.
+ * Estrategia dual:
+ *   A) Si hay exchangeToken → exchange para obtener link_token
+ *   B) Si no hay exchangeToken pero hay linkId → GET /links/{linkId} como fallback
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const linkIntentId = body.linkIntentId as string | undefined;
     const exchangeToken = body.exchangeToken as string | undefined;
+    const linkId = body.linkId as string | undefined;
 
-    if (!linkIntentId || !exchangeToken) {
+    console.log("=== CONNECT: received", { linkIntentId, exchangeToken: !!exchangeToken, linkId });
+
+    if (!linkIntentId) {
       return NextResponse.json(
-        { error: "Faltan linkIntentId o exchangeToken del widget" },
+        { error: "Falta linkIntentId" },
         { status: 400 }
       );
     }
 
-    console.log("=== CONNECT: exchanging token for linkIntent", linkIntentId);
+    let linkToken: string | undefined;
+    let bankName = "Banco de Chile";
+    let holderName: string | null = null;
+    let resultId: string | undefined;
 
-    // Exchange para obtener el link_token real (formato: link_XXX_token_YYY)
-    const exchangeResult = await exchangeLinkToken(linkIntentId, exchangeToken);
-    const linkToken = exchangeResult.link_token;
-    const bankName = exchangeResult.institution?.name ?? "Banco de Chile";
-    const holderName = exchangeResult.holder_name ?? null;
-
-    console.log("=== CONNECT: got link_token", linkToken?.slice(0, 20) + "...");
+    // Camino A: exchange token disponible (flujo ideal)
+    if (exchangeToken) {
+      console.log("=== CONNECT: Camino A — exchange token for linkIntent", linkIntentId);
+      const exchangeResult = await exchangeLinkToken(linkIntentId, exchangeToken);
+      linkToken = exchangeResult.link_token;
+      bankName = exchangeResult.institution?.name ?? bankName;
+      holderName = exchangeResult.holder_name ?? null;
+      resultId = exchangeResult.id;
+      console.log("=== CONNECT: exchange OK, link_token", linkToken?.slice(0, 20) + "...");
+    }
+    // Camino B: sin exchangeToken, usar linkId para GET el link directamente
+    else if (linkId) {
+      console.log("=== CONNECT: Camino B — GET link by id", linkId);
+      const linkData = await getLinkById(linkId);
+      linkToken = linkData.link_token;
+      bankName = linkData.institution?.name ?? bankName;
+      holderName = linkData.holder_name ?? null;
+      resultId = linkData.id;
+      console.log("=== CONNECT: GET link OK, link_token", linkToken?.slice(0, 20) + "...");
+    } else {
+      return NextResponse.json(
+        { error: "Se necesita exchangeToken o linkId del widget" },
+        { status: 400 }
+      );
+    }
 
     if (!linkToken) {
       return NextResponse.json(
-        { error: "No se recibió link_token del exchange" },
+        { error: "No se recibió link_token" },
         { status: 500 }
       );
     }
@@ -52,7 +76,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      linkId: exchangeResult.id,
+      linkId: resultId,
       bank: bankName,
     });
   } catch (error) {

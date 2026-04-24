@@ -10,6 +10,7 @@ import { createLinkIntent } from "@/lib/fintoc";
 export async function POST() {
   try {
     const intent = await createLinkIntent();
+    console.log("=== CREATE-INTENT: response", JSON.stringify(intent));
     return NextResponse.json({
       widgetToken: intent.widget_token,
       linkIntentId: intent.id,

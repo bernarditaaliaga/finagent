@@ -50,6 +50,20 @@ export async function exchangeLinkToken(
   return res.json();
 }
 
+// Obtiene un link por ID para extraer el link_token (fallback cuando no hay exchangeToken)
+export async function getLinkById(
+  linkId: string
+): Promise<{ link_token: string; id: string; institution: { name: string } | null; holder_name: string | null }> {
+  const res = await fetch(`${FINTOC_BASE_URL}/links/${linkId}`, {
+    headers: getHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`GET link failed (${res.status}): ${JSON.stringify(err)}`);
+  }
+  return res.json();
+}
+
 // Obtiene cuentas y movimientos de un link
 export async function getAccountsAndMovements(linkToken: string) {
   const headers = getHeaders();

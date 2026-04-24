@@ -71,15 +71,16 @@ export function BancoClient({
         publicKey: fintocPublicKey,
         country: "cl",
         widgetToken: intentData.widgetToken,
-        onSuccess: async (linkIntent: Record<string, unknown>) => {
-          console.log("Fintoc onSuccess:", JSON.stringify(linkIntent));
+        onSuccess: async (result: Record<string, unknown>) => {
+          console.log("Fintoc onSuccess:", JSON.stringify(result));
           try {
             const res = await fetch("/api/fintoc/connect", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                linkIntentId: linkIntent.id,
-                exchangeToken: linkIntent.exchangeToken,
+                linkIntentId: intentData.linkIntentId,
+                exchangeToken: result.exchangeToken,
+                linkId: result.id,
               }),
             });
             const data = await res.json();
