@@ -296,10 +296,14 @@ META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
 
    ¿Es viable ahorrar la meta si se ajustan los gastos VARIABLES por categoría según su prioridad?
 
-3. PRESUPUESTOS SUGERIDOS: Para cada categoría con gasto, sugiere un límite mensual realista basado en:
-   - Su promedio histórico
-   - Su prioridad (esencial casi no se toca, innecesario se recorta fuerte)
-   - Lo que se necesita recortar para alcanzar la meta
+3. PRESUPUESTOS SUGERIDOS: Debes generar un presupuesto para CADA UNA de las categorías listadas arriba, sin excepción.
+   - Usa el categoryId EXACTO de cada categoría (los IDs están en la lista de arriba)
+   - NO inventes categorías nuevas, NO agrupes categorías, NO crees un "otros" o "misceláneos"
+   - Cada categoría debe tener su propio límite basado en su promedio histórico y prioridad
+   - Si una categoría tiene gasto 0 y promedio 0, ponle budgetAmount: 0
+
+Las categorías y sus IDs exactos son:
+${categoryInfo.map((c) => `- categoryId: "${c.id}", categoryName: "${c.name}", priority: "${c.priority}", promedio: ${c.avgMonthly}, este mes: ${c.currentSpent}`).join("\n")}
 
 Responde EXACTAMENTE en JSON:
 {
@@ -312,9 +316,11 @@ Responde EXACTAMENTE en JSON:
   "startYear": ${currentMonth === 12 ? nextYear : currentYear},
   "startReason": "Frase corta explicando por qué se eligió este mes de inicio",
   "budgets": [
-    { "categoryId": "id", "categoryName": "nombre", "budgetAmount": número, "recommendation": "por qué este monto" }
+    { "categoryId": "el ID exacto de arriba", "categoryName": "nombre exacto", "budgetAmount": número, "recommendation": "por qué este monto" }
   ]
 }
+
+IMPORTANTE: el array "budgets" debe tener EXACTAMENTE ${categoryInfo.length} elementos, uno por cada categoría listada. No más, no menos. No inventes categorías.
 
 Solo JSON válido, sin texto adicional fuera del JSON.${userInstructions ? `\n\n═══ INDICACIONES ADICIONALES DEL USUARIO ═══\n${userInstructions}` : ""}`;
 
