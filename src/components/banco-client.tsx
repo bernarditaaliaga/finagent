@@ -63,14 +63,17 @@ export function BancoClient({
         publicKey: fintocPublicKey,
         country: "cl",
         webhookUrl: "https://finagent-eight.vercel.app/api/fintoc/webhook",
-        onSuccess: async (linkInfo: Record<string, unknown>) => {
-          // El widget entrega info del link creado en el callback
-          console.log("Fintoc onSuccess:", JSON.stringify(linkInfo));
+        onSuccess: async (linkIntent: Record<string, unknown>) => {
+          // El widget entrega un linkIntent con id y exchangeToken
+          console.log("Fintoc onSuccess:", JSON.stringify(linkIntent));
           try {
             const res = await fetch("/api/fintoc/connect", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ widgetData: linkInfo }),
+              body: JSON.stringify({
+                linkIntentId: linkIntent.id,
+                exchangeToken: linkIntent.exchangeToken,
+              }),
             });
             const data = await res.json();
             if (data.success) {
