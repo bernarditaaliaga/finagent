@@ -135,14 +135,24 @@ export function BancoClient({
               )}
             </div>
           </div>
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-          >
-            <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Sincronizando..." : "Sincronizar Transacciones"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Sincronizando..." : "Sincronizar Transacciones"}
+            </button>
+            <button
+              onClick={handleConnect}
+              disabled={connecting || !scriptLoaded}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-50 text-sm font-medium"
+            >
+              <Landmark className="w-4 h-4" />
+              Reconectar Banco
+            </button>
+          </div>
         </div>
       ) : (
         <div className="bg-white rounded-xl p-8 shadow-sm border border-slate-100 text-center">
@@ -175,18 +185,6 @@ export function BancoClient({
           {message}
         </div>
       )}
-
-      {/* Credenciales de prueba */}
-      <div className="bg-amber-50 rounded-xl p-5 border border-amber-200">
-        <h3 className="font-semibold text-amber-800 mb-2">Credenciales de Prueba</h3>
-        <p className="text-sm text-amber-700 mb-2">
-          Estas en modo prueba. Usa estas credenciales ficticias:
-        </p>
-        <div className="bg-white rounded-lg p-3 text-sm font-mono">
-          <p><span className="text-slate-500">RUT:</span> 41614850-3</p>
-          <p><span className="text-slate-500">Clave:</span> jonsnow</p>
-        </div>
-      </div>
 
       <div className="bg-slate-50 rounded-xl p-6 border border-slate-200">
         <h3 className="font-semibold text-slate-700 mb-3">Como funciona</h3>

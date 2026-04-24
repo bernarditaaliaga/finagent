@@ -65,7 +65,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="px-4 py-4 border-t border-slate-700">
-        <p className="text-xs text-slate-500">Modo Prueba - Fintoc</p>
+        <p className="text-xs text-slate-500">Fintoc - Modo en vivo</p>
       </div>
     </aside>
   );
