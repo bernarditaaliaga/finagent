@@ -23,66 +23,79 @@ export async function POST() {
     let totalImported = 0;
     let accountCount = 0;
 
-    // Sync balances
-    try {
-      const balances = await getAccountBalances(linkToken);
-      for (const acc of balances) {
-        await prisma.bankAccount.upsert({
-          where: { fintocId: acc.id },
-          update: {
-            available: acc.available,
-            current: acc.current,
-            creditLimit: acc.limit ?? 0,
-            name: acc.name,
-          },
-          create: {
-            fintocId: acc.id,
-            name: acc.name,
-            type: acc.type,
-            number: acc.number,
-            available: acc.available,
-            current: acc.current,
-            creditLimit: acc.limit ?? 0,
-            currency: acc.currency,
-          },
-        });
-      }
-    } catch (e) {
-      console.error("Error syncing balances:", e);
+    // Fetch all data from Fintoc in parallel
+    type BalanceItem = { id: string; name: string; type: string; number: string; available: number; current: number; limit: number; currency: string };
+    type CardItem = { id: string; name: string; lastFourDigits: string | null; cupoTotal: number; deudaActual: number; available: number; isTitular: boolean; currency: string };
+
+    const [balances, creditCards, accountsData] = await Promise.all([
+      getAccountBalances(linkToken).catch((e) => {
+        console.error("Error fetching balances:", e);
+        return [] as BalanceItem[];
+      }) as Promise<BalanceItem[]>,
+      getCreditCards(linkToken).catch((e) => {
+        console.error("Error fetching credit cards:", e);
+        return [] as CardItem[];
+      }) as Promise<CardItem[]>,
+      getAccountsAndMovements(linkToken),
+    ]);
+
+    // Sync balances — batch with Promise.all
+    if (balances.length > 0) {
+      await Promise.all(
+        balances.map((acc) =>
+          prisma.bankAccount.upsert({
+            where: { fintocId: acc.id },
+            update: {
+              available: acc.available,
+              current: acc.current,
+              creditLimit: acc.limit ?? 0,
+              name: acc.name,
+            },
+            create: {
+              fintocId: acc.id,
+              name: acc.name,
+              type: acc.type,
+              number: acc.number,
+              available: acc.available,
+              current: acc.current,
+              creditLimit: acc.limit ?? 0,
+              currency: acc.currency,
+            },
+          })
+        )
+      );
     }
 
-    // Sync credit cards
-    try {
-      const creditCards = await getCreditCards(linkToken);
-      for (const card of creditCards) {
-        // Solo guardar tarjetas donde es titular
-        if (!card.isTitular) continue;
-        await prisma.creditCard.upsert({
-          where: { fintocId: card.id },
-          update: {
-            cupoTotal: card.cupoTotal,
-            deudaActual: card.deudaActual,
-            name: card.name,
-            lastFourDigits: card.lastFourDigits,
-            isTitular: card.isTitular,
-          },
-          create: {
-            fintocId: card.id,
-            name: card.name,
-            lastFourDigits: card.lastFourDigits,
-            cupoTotal: card.cupoTotal,
-            deudaActual: card.deudaActual,
-            isTitular: card.isTitular,
-          },
-        });
-      }
-    } catch (e) {
-      console.error("Error syncing credit cards:", e);
+    // Sync credit cards — batch with Promise.all
+    const titularCards = creditCards.filter((c) => c.isTitular);
+    if (titularCards.length > 0) {
+      await Promise.all(
+        titularCards.map((card) =>
+          prisma.creditCard.upsert({
+            where: { fintocId: card.id },
+            update: {
+              cupoTotal: card.cupoTotal,
+              deudaActual: card.deudaActual,
+              name: card.name,
+              lastFourDigits: card.lastFourDigits,
+              isTitular: card.isTitular,
+            },
+            create: {
+              fintocId: card.id,
+              name: card.name,
+              lastFourDigits: card.lastFourDigits,
+              cupoTotal: card.cupoTotal,
+              deudaActual: card.deudaActual,
+              isTitular: card.isTitular,
+            },
+          })
+        )
+      );
     }
 
-    // Sync transactions
-    const accountsData = await getAccountsAndMovements(linkToken);
+    // Sync transactions — batch in chunks of 20 for concurrency
     accountCount = accountsData.length;
+    const allUpserts: Promise<unknown>[] = [];
 
     for (const { account, movements } of accountsData) {
       const accNumber = account.number as string | undefined;
@@ -97,26 +110,34 @@ export async function POST() {
         const postDate = (mov.post_date as string) || (mov.postDate as string) || new Date().toISOString();
         const currency = (mov.currency as string) ?? "CLP";
 
-        await prisma.transaction.upsert({
-          where: { fintocId: movId },
-          update: {
-            amount,
-            description,
-            date: new Date(postDate),
-            accountName: fullAccountName,
-          },
-          create: {
-            fintocId: movId,
-            date: new Date(postDate),
-            description,
-            amount,
-            currency,
-            accountId: account.id as string,
-            accountName: fullAccountName,
-          },
-        });
+        allUpserts.push(
+          prisma.transaction.upsert({
+            where: { fintocId: movId },
+            update: {
+              amount,
+              description,
+              date: new Date(postDate),
+              accountName: fullAccountName,
+            },
+            create: {
+              fintocId: movId,
+              date: new Date(postDate),
+              description,
+              amount,
+              currency,
+              accountId: account.id as string,
+              accountName: fullAccountName,
+            },
+          })
+        );
         totalImported++;
       }
+    }
+
+    // Execute in batches of 20 to avoid overwhelming the DB
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < allUpserts.length; i += BATCH_SIZE) {
+      await Promise.all(allUpserts.slice(i, i + BATCH_SIZE));
     }
 
     await prisma.bankLink.update({
@@ -152,19 +173,22 @@ async function detectFixedExpensePayments() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    const fixedExpenses = await prisma.fixedExpense.findMany({
-      where: {
-        isActive: true,
-        matchKeyword: { not: null },
-      },
-    });
+    const [fixedExpenses, monthTransactions] = await Promise.all([
+      prisma.fixedExpense.findMany({
+        where: {
+          isActive: true,
+          matchKeyword: { not: null },
+        },
+      }),
+      prisma.transaction.findMany({
+        where: { date: { gte: startOfMonth, lt: endOfMonth } },
+        select: { description: true, amount: true, date: true },
+      }),
+    ]);
 
     if (fixedExpenses.length === 0) return;
 
-    const monthTransactions = await prisma.transaction.findMany({
-      where: { date: { gte: startOfMonth, lt: endOfMonth } },
-      select: { description: true, amount: true, date: true },
-    });
+    const updates: Promise<unknown>[] = [];
 
     for (const expense of fixedExpenses) {
       if (!expense.matchKeyword) continue;
@@ -172,26 +196,29 @@ async function detectFixedExpensePayments() {
       const keyword = expense.matchKeyword.toLowerCase();
       const isIncome = expense.type === "income";
 
-      // Buscar transacción que contenga el keyword
       const match = monthTransactions.find((t) => {
         const descMatch = t.description.toLowerCase().includes(keyword);
-        // Para gastos: monto negativo. Para ingresos: monto positivo
         const signMatch = isIncome ? t.amount > 0 : t.amount < 0;
         return descMatch && signMatch;
       });
 
       if (match) {
-        // Encontró el pago → actualizar lastPaidAt
         const alreadyPaid = expense.lastPaidAt &&
           expense.lastPaidAt >= startOfMonth && expense.lastPaidAt < endOfMonth;
 
         if (!alreadyPaid) {
-          await prisma.fixedExpense.update({
-            where: { id: expense.id },
-            data: { lastPaidAt: match.date },
-          });
+          updates.push(
+            prisma.fixedExpense.update({
+              where: { id: expense.id },
+              data: { lastPaidAt: match.date },
+            })
+          );
         }
       }
+    }
+
+    if (updates.length > 0) {
+      await Promise.all(updates);
     }
   } catch (e) {
     console.error("Error detectando pagos fijos:", e);

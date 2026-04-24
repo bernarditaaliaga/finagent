@@ -8,86 +8,66 @@ export default async function IndicadoresPage() {
   let indicators: Record<string, { nombre: string; valor: number; unidad_medida: string; fecha: string }> = {};
   let error = "";
 
-  try {
-    indicators = await getIndicators();
-  } catch {
-    error = "No se pudieron cargar los indicadores";
-  }
-
-  // Obtener gastos de los últimos 6 meses para el gráfico de tendencia
   const now = new Date();
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
-  const transactions = await prisma.transaction.findMany({
-    where: {
-      date: { gte: sixMonthsAgo },
-      amount: { lt: 0 },
-    },
-    select: { amount: true, date: true, description: true },
-  });
+  // Fetch indicators and transactions in parallel
+  const [indicatorsResult, allTxns] = await Promise.all([
+    getIndicators().catch(() => {
+      error = "No se pudieron cargar los indicadores";
+      return {} as typeof indicators;
+    }),
+    prisma.transaction.findMany({
+      where: { date: { gte: sixMonthsAgo } },
+      select: { amount: true, date: true, description: true },
+    }),
+  ]);
 
-  // Agrupar por mes
-  const monthlyData: { month: string; gastos: number; key: string }[] = [];
+  indicators = indicatorsResult;
+
+  // Build chart data in a single pass
   const MONTH_NAMES = [
     "Ene", "Feb", "Mar", "Abr", "May", "Jun",
     "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
   ];
 
+  // Initialize monthly buckets
+  const monthBuckets = new Map<string, { gastos: number; ingresos: number; label: string }>();
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const m = d.getMonth();
-    const y = d.getFullYear();
-    const key = `${y}-${m}`;
-    const monthStart = new Date(y, m, 1);
-    const monthEnd = new Date(y, m + 1, 1);
-
-    const total = transactions
-      .filter((t) => {
-        const td = new Date(t.date);
-        const desc = t.description.toLowerCase();
-        return td >= monthStart && td < monthEnd
-          && !desc.includes("linea de credito") && !desc.includes("linea de cred");
-      })
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-    monthlyData.push({
-      month: `${MONTH_NAMES[m]} ${y.toString().slice(2)}`,
-      gastos: total,
-      key,
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    monthBuckets.set(key, {
+      gastos: 0,
+      ingresos: 0,
+      label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear().toString().slice(2)}`,
     });
   }
 
-  // Ingresos por mes
-  const incomeTransactions = await prisma.transaction.findMany({
-    where: {
-      date: { gte: sixMonthsAgo },
-      amount: { gt: 0 },
-    },
-    select: { amount: true, date: true, description: true },
-  });
+  // Single pass over transactions
+  for (const t of allTxns) {
+    const desc = t.description.toLowerCase();
+    if (desc.includes("linea de credito") || desc.includes("linea de cred")) continue;
 
-  const chartData = monthlyData.map((md) => {
-    const [yStr, mStr] = md.key.split("-");
-    const y = parseInt(yStr);
-    const m = parseInt(mStr);
-    const monthStart = new Date(y, m, 1);
-    const monthEnd = new Date(y, m + 1, 1);
+    const td = new Date(t.date);
+    const key = `${td.getFullYear()}-${td.getMonth()}`;
+    const bucket = monthBuckets.get(key);
+    if (!bucket) continue;
 
-    const ingresos = incomeTransactions
-      .filter((t) => {
-        const td = new Date(t.date);
-        const desc = t.description.toLowerCase();
-        return td >= monthStart && td < monthEnd
-          && !desc.includes("linea de credito") && !desc.includes("linea de cred");
-      })
-      .reduce((sum, t) => sum + t.amount, 0);
+    if (t.amount < 0) {
+      bucket.gastos += Math.abs(t.amount);
+    } else {
+      bucket.ingresos += t.amount;
+    }
+  }
 
-    return {
-      month: md.month,
-      gastos: md.gastos,
-      ingresos,
-    };
-  });
+  // Build ordered chart data
+  const chartData: { month: string; gastos: number; ingresos: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    const bucket = monthBuckets.get(key)!;
+    chartData.push({ month: bucket.label, gastos: bucket.gastos, ingresos: bucket.ingresos });
+  }
 
   const format = (val: number, unit: string) => {
     if (unit === "Pesos") return `$${val.toLocaleString("es-CL")}`;

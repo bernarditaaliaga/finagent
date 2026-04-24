@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatCLP, formatDate } from "@/lib/format";
-import { Plus, Tag, Sparkles, Trash2, ArrowLeft, Pencil, X, Check } from "lucide-react";
+import { Plus, Tag, Sparkles, Trash2, ArrowLeft, Pencil, X, Check, UserPlus } from "lucide-react";
 
 interface Category {
   id: string;
@@ -74,6 +74,8 @@ export function CategoriasClient({
   const [editName, setEditName] = useState("");
   const [editColor, setEditColor] = useState("");
   const [editBudget, setEditBudget] = useState("");
+  const [addingSenderId, setAddingSenderId] = useState<string | null>(null);
+  const [newSenderKeyword, setNewSenderKeyword] = useState("");
 
   const selectedCategory = selectedCategoryId
     ? categories.find((c) => c.id === selectedCategoryId)
@@ -215,6 +217,25 @@ export function CategoriasClient({
       const newRule = await res.json();
       setRules([...rules, newRule]);
       form.reset();
+    }
+  }
+
+  async function addSenderToCategory(categoryId: string) {
+    if (!newSenderKeyword.trim()) return;
+    const res = await fetch("/api/categorize/rules", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        keyword: newSenderKeyword.trim(),
+        categoryId,
+        issender: true,
+      }),
+    });
+    if (res.ok) {
+      const newRule = await res.json();
+      setRules([...rules, newRule]);
+      setNewSenderKeyword("");
+      setAddingSenderId(null);
     }
   }
 
@@ -533,6 +554,62 @@ export function CategoriasClient({
                     </option>
                   ))}
                 </select>
+
+                {/* Reglas asociadas a esta categoría */}
+                {(() => {
+                  const catRules = rules.filter((r) => r.categoryId === cat.id);
+                  return catRules.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      {catRules.map((r) => (
+                        <div key={r.id} className="flex items-center justify-between bg-slate-50 rounded px-2 py-1">
+                          <span className="text-xs text-slate-600">
+                            {r.issender ? "📤" : "📝"} {r.keyword}
+                          </span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteRule(r.id); }}
+                            className="text-slate-300 hover:text-red-500 p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Agregar destinatario inline */}
+                {addingSenderId === cat.id ? (
+                  <div className="mt-2 flex gap-1" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      value={newSenderKeyword}
+                      onChange={(e) => setNewSenderKeyword(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") addSenderToCategory(cat.id); }}
+                      className="flex-1 px-2 py-1 border rounded text-xs"
+                      placeholder="Ej: merpago* whoosh"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => addSenderToCategory(cat.id)}
+                      className="px-2 py-1 bg-emerald-600 text-white rounded text-xs hover:bg-emerald-700"
+                    >
+                      <Check className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => { setAddingSenderId(null); setNewSenderKeyword(""); }}
+                      className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs hover:bg-slate-200"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setAddingSenderId(cat.id); setNewSenderKeyword(""); }}
+                    className="mt-2 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    <UserPlus className="w-3 h-3" />
+                    Asociar destinatario
+                  </button>
+                )}
               </>
             )}
           </div>

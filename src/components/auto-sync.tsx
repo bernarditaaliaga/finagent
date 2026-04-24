@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 const SYNC_INTERVAL_MS = 10 * 60 * 1000; // 10 minutos
 const STORAGE_KEY = "finagent_last_sync";
 
 export function AutoSync() {
+  const router = useRouter();
+
   useEffect(() => {
     async function maybeSync() {
       const lastSync = localStorage.getItem(STORAGE_KEY);
@@ -21,8 +24,8 @@ export function AutoSync() {
           localStorage.setItem(STORAGE_KEY, now.toString());
           const data = await res.json();
           if (data.imported > 0) {
-            // Si importó transacciones nuevas, recargar para mostrarlas
-            window.location.reload();
+            // Refrescar datos del servidor sin recargar la página completa
+            router.refresh();
           }
         }
       } catch {
@@ -31,7 +34,7 @@ export function AutoSync() {
     }
 
     maybeSync();
-  }, []);
+  }, [router]);
 
   return null;
 }

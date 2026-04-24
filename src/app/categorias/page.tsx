@@ -15,46 +15,37 @@ export default async function CategoriasPage({
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const categories = await prisma.category.findMany({
-    include: {
-      transactions: {
-        where: { date: { gte: startOfMonth, lt: endOfMonth } },
-        select: { amount: true },
+  // Parallel queries
+  const [categories, uncategorized, rulesData, selectedCatTxns] = await Promise.all([
+    prisma.category.findMany({
+      include: {
+        transactions: {
+          where: { date: { gte: startOfMonth, lt: endOfMonth } },
+          select: { amount: true },
+        },
+        _count: { select: { transactions: true } },
       },
-      _count: { select: { transactions: true } },
-    },
-    orderBy: { name: "asc" },
-  });
-
-  const uncategorized = await prisma.transaction.findMany({
-    where: { categoryId: null },
-    orderBy: { date: "desc" },
-    take: 50,
-  });
-
-  // Si hay categoría seleccionada, cargar sus transacciones del mes
-  let selectedCatTransactions: { id: string; date: string; description: string; amount: number; accountName: string | null }[] = [];
-  if (selectedCatId) {
-    const txns = await prisma.transaction.findMany({
-      where: {
-        categoryId: selectedCatId,
-        date: { gte: startOfMonth, lt: endOfMonth },
-      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.transaction.findMany({
+      where: { categoryId: null },
       orderBy: { date: "desc" },
-    });
-    selectedCatTransactions = txns.map((t) => ({
-      id: t.id,
-      date: t.date.toISOString(),
-      description: t.description,
-      amount: t.amount,
-      accountName: t.accountName ?? null,
-    }));
-  }
-
-  const rulesData = await prisma.categoryRule.findMany({
-    include: { category: { select: { name: true } } },
-    orderBy: { createdAt: "desc" },
-  });
+      take: 50,
+    }),
+    prisma.categoryRule.findMany({
+      include: { category: { select: { name: true } } },
+      orderBy: { createdAt: "desc" },
+    }),
+    selectedCatId
+      ? prisma.transaction.findMany({
+          where: {
+            categoryId: selectedCatId,
+            date: { gte: startOfMonth, lt: endOfMonth },
+          },
+          orderBy: { date: "desc" },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const categoryData = categories.map((cat) => ({
     id: cat.id,
@@ -83,6 +74,14 @@ export default async function CategoriasPage({
     categoryName: r.category.name,
   }));
 
+  const selectedCategoryTransactions = selectedCatTxns.map((t) => ({
+    id: t.id,
+    date: t.date.toISOString(),
+    description: t.description,
+    amount: t.amount,
+    accountName: t.accountName ?? null,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
@@ -95,7 +94,7 @@ export default async function CategoriasPage({
         uncategorized={uncategorizedData}
         rules={rules}
         selectedCategoryId={selectedCatId}
-        selectedCategoryTransactions={selectedCatTransactions}
+        selectedCategoryTransactions={selectedCategoryTransactions}
       />
     </div>
   );
