@@ -121,12 +121,6 @@ export async function DELETE(request: Request) {
     // Eliminar budgets asociados
     await prisma.categoryBudget.deleteMany({ where: { categoryId: id } });
 
-    // Eliminar gastos fijos asociados (desasociar)
-    await prisma.fixedExpense.updateMany({
-      where: { categoryId: id },
-      data: { categoryId: null },
-    });
-
     // Eliminar la categoría
     await prisma.category.delete({ where: { id } });
 

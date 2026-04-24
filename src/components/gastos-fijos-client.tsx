@@ -14,18 +14,13 @@ interface FixedExpense {
   type: string;
   isActive: boolean;
   lastPaidAt: string | null;
-  categoryId: string | null;
   matchKeyword: string | null;
-  categoryName: string | null;
-  categoryColor: string | null;
 }
 
 export function GastosFijosClient({
   expenses: initialExpenses,
-  categories,
 }: {
   expenses: FixedExpense[];
-  categories: { id: string; name: string }[];
 }) {
   const [expenses, setExpenses] = useState(initialExpenses);
   const [showForm, setShowForm] = useState(false);
@@ -35,7 +30,7 @@ export function GastosFijosClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState({
     name: "", amount: "", amountUsd: "", currency: "CLP",
-    dayOfMonth: "", categoryId: "", type: "expense", matchKeyword: "",
+    dayOfMonth: "", type: "expense", matchKeyword: "",
   });
   const [toggling, setToggling] = useState<string | null>(null);
 
@@ -56,7 +51,6 @@ export function GastosFijosClient({
       name: formData.get("name"),
       currency,
       type,
-      categoryId: type === "income" ? null : (formData.get("categoryId") || null),
       dayOfMonth: dayValue ? parseInt(dayValue) : null,
       matchKeyword: (formData.get("matchKeyword") as string) || null,
     };
@@ -122,7 +116,6 @@ export function GastosFijosClient({
       amountUsd: exp.amountUsd?.toString() ?? "",
       currency: exp.currency,
       dayOfMonth: exp.dayOfMonth?.toString() ?? "",
-      categoryId: exp.categoryId ?? "",
       type: exp.type,
       matchKeyword: exp.matchKeyword ?? "",
     });
@@ -135,7 +128,6 @@ export function GastosFijosClient({
       currency: editData.currency,
       type: editData.type,
       dayOfMonth: editData.dayOfMonth ? parseInt(editData.dayOfMonth) : null,
-      categoryId: editData.type === "income" ? null : (editData.categoryId || null),
       matchKeyword: editData.matchKeyword || null,
     };
 
@@ -237,21 +229,6 @@ export function GastosFijosClient({
                 placeholder="-"
               />
             </div>
-            {editData.type !== "income" && (
-              <div className="w-36">
-                <label className="block text-xs text-slate-500 mb-1">Categoria</label>
-                <select
-                  value={editData.categoryId}
-                  onChange={(e) => setEditData({ ...editData, categoryId: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg text-sm"
-                >
-                  <option value="">Sin categoria</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
             <div className="flex-1 min-w-[180px]">
               <label className="block text-xs text-slate-500 mb-1">Detectar pago (keyword)</label>
               <input
@@ -317,7 +294,6 @@ export function GastosFijosClient({
             </div>
             <p className="text-xs text-slate-400">
               {exp.dayOfMonth ? `Dia ${exp.dayOfMonth} de cada mes` : "Sin dia definido"}
-              {exp.categoryName && ` · ${exp.categoryName}`}
             </p>
             {exp.matchKeyword && (
               <p className="text-xs text-indigo-500">Detecta: {exp.matchKeyword}</p>
@@ -475,19 +451,6 @@ export function GastosFijosClient({
                 placeholder="Opcional"
               />
             </div>
-
-            {/* Solo mostrar categoría para gastos */}
-            {type === "expense" && (
-              <div className="w-40">
-                <label className="block text-xs text-slate-500 mb-1">Categoria</label>
-                <select name="categoryId" className="w-full px-3 py-2 border rounded-lg text-sm">
-                  <option value="">Sin categoria</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <div className="w-44">
               <label className="block text-xs text-slate-500 mb-1">Detectar pago</label>

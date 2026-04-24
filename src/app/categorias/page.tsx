@@ -15,8 +15,15 @@ export default async function CategoriasPage({
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
+  // Asegurar que exista la categoría "Gastos Fijos" por default
+  await prisma.category.upsert({
+    where: { name: "Gastos Fijos" },
+    update: {},
+    create: { name: "Gastos Fijos", color: "#6B7280", priority: "esencial", frequency: "recurrente" },
+  });
+
   // Parallel queries
-  const [categories, uncategorized, rulesData, selectedCatTxns] = await Promise.all([
+  const [categories, uncategorized, rulesData, selectedCatTxns, fixedExpenses] = await Promise.all([
     prisma.category.findMany({
       include: {
         transactions: {
@@ -45,19 +52,28 @@ export default async function CategoriasPage({
           orderBy: { date: "desc" },
         })
       : Promise.resolve([]),
+    prisma.fixedExpense.findMany({ where: { isActive: true, type: "expense" } }),
   ]);
 
-  const categoryData = categories.map((cat) => ({
-    id: cat.id,
-    name: cat.name,
-    icon: cat.icon,
-    color: cat.color,
-    budgetLimit: cat.budgetLimit,
-    priority: cat.priority,
-    frequency: cat.frequency,
-    totalTransactions: cat._count.transactions,
-    spentThisMonth: cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0),
-  }));
+  // Calcular total gastos fijos para mostrar en la categoría "Gastos Fijos"
+  const totalFixedExpenses = fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const categoryData = categories.map((cat) => {
+    const txSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    // Para "Gastos Fijos", mostrar el total de gastos fijos + transacciones categorizadas ahí
+    const isGastosFijos = cat.name === "Gastos Fijos";
+    return {
+      id: cat.id,
+      name: cat.name,
+      icon: cat.icon,
+      color: cat.color,
+      budgetLimit: isGastosFijos ? totalFixedExpenses : cat.budgetLimit,
+      priority: cat.priority,
+      frequency: cat.frequency,
+      totalTransactions: cat._count.transactions,
+      spentThisMonth: isGastosFijos ? txSpent + totalFixedExpenses : txSpent,
+    };
+  });
 
   const uncategorizedData = uncategorized.map((t) => ({
     id: t.id,

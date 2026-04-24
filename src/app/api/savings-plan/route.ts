@@ -171,16 +171,8 @@ export async function POST(request: Request) {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     const daysRemaining = daysInMonth - currentDay;
 
-    // === ANÁLISIS POR CATEGORÍA (excluir categorías de gastos fijos y cuotas TC, ya contados como costos fijos) ===
-    const fixedCategoryIds = new Set(
-      fixedExpenses.map((e) => e.categoryId).filter(Boolean) as string[]
-    );
-    // También excluir categorías usadas en cuotas TC (son gastos fijos no negociables)
-    for (const exp of ccExpenses) {
-      if (exp.categoryId) fixedCategoryIds.add(exp.categoryId);
-    }
-
-    const categoryInfo = categories.filter((cat) => !fixedCategoryIds.has(cat.id) && cat.frequency !== "ocasional").map((cat) => {
+    // === ANÁLISIS POR CATEGORÍA (solo gastos variables — gastos fijos ya no tienen categoría) ===
+    const categoryInfo = categories.filter((cat) => cat.frequency !== "ocasional").map((cat) => {
       const currentSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
       const historicalForCat = historicalTxns.filter((t) => t.categoryId === cat.id);
       const monthsWithData = new Set(
@@ -259,8 +251,8 @@ IMPORTANTE: Los gastos fijos y cuotas TC son un bloque único no negociable. NO 
 
 GASTOS VARIABLES YA REALIZADOS ESTE MES: $${spentSoFar.toLocaleString("es-CL")}
 
-═══ GASTOS VARIABLES POR CATEGORÍA (promedio mensual y prioridad) ═══
-(NOTA: estas son SOLO las categorías de gastos VARIABLES que se pueden ajustar. Los gastos fijos y cuotas TC ya están contados arriba como bloque fijo y NO aparecen aquí. No los cuentes dos veces ni sugieran presupuestos para ellos.)
+═══ GASTOS VARIABLES POR CATEGORÍA ═══
+(NOTA: estas categorías son SOLO gastos variables. Los gastos fijos y cuotas TC ya están contados arriba como bloque fijo separado. No los cuentes dos veces.)
 ${categoryInfo.filter((c) => c.avgMonthly > 0 || c.currentSpent > 0).map((c) => `- ${c.name} [${c.priority}]: promedio mensual $${c.avgMonthly.toLocaleString("es-CL")}, este mes $${c.currentSpent.toLocaleString("es-CL")}`).join("\n")}
 
 ═══ PRIORIDADES (qué tan reducible es cada categoría) ═══
@@ -272,7 +264,7 @@ No sugieras montos irreales — si alguien gasta $100.000 en bencina, no puede g
 - "necesario": reducción conservadora, máximo 10-15% del promedio
 - "prescindible": reducción moderada, máximo 15-25% del promedio
 - "innecesario": se puede recortar fuerte, 30-50% del promedio
-- Los gastos fijos y cuotas TC son un BLOQUE FIJO no negociable, ya están contados aparte. NO los incluyas en los presupuestos por categoría
+- Los gastos fijos y cuotas TC son un bloque separado no negociable, ya contado arriba
 - El límite sugerido NUNCA debe ser menor al 60% del promedio histórico
 
 META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
@@ -303,7 +295,7 @@ META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
    - Si una categoría tiene gasto 0 y promedio 0, ponle budgetAmount: 0
 
 Las categorías y sus IDs exactos son:
-${categoryInfo.map((c) => `- categoryId: "${c.id}", categoryName: "${c.name}", priority: "${c.priority}", promedio: ${c.avgMonthly}, este mes: ${c.currentSpent}`).join("\n")}
+${categoryInfo.map((c) => `- categoryId: "${c.id}", categoryName: "${c.name}", priority: "${c.priority}", promedio: ${c.avgMonthly}, esteMes: ${c.currentSpent}`).join("\n")}
 
 Responde EXACTAMENTE en JSON:
 {

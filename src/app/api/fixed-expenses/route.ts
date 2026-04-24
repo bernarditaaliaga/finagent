@@ -7,7 +7,6 @@ import { prisma } from "@/lib/db";
  */
 export async function GET() {
   const expenses = await prisma.fixedExpense.findMany({
-    include: { category: true },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(expenses);
@@ -20,7 +19,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, amount, amountUsd, currency, dayOfMonth, categoryId, type, matchKeyword } = body;
+    const { name, amount, amountUsd, currency, dayOfMonth, type, matchKeyword } = body;
 
     let finalAmount = amount;
 
@@ -46,7 +45,6 @@ export async function POST(request: Request) {
         amountUsd: currency === "USD" ? amountUsd : null,
         currency: currency || "CLP",
         dayOfMonth: dayOfMonth || null,
-        categoryId: categoryId || null,
         type: type || "expense",
         matchKeyword: matchKeyword || null,
         isActive: true,

@@ -100,7 +100,7 @@ export async function POST() {
         if (!fe.matchKeyword) continue;
         const keyword = fe.matchKeyword.toLowerCase();
         if (descLower.includes(keyword)) {
-          matchedCategoryId = fe.categoryId ?? gastosFijosCategory?.id ?? null;
+          matchedCategoryId = gastosFijosCategory?.id ?? null;
           break;
         }
       }

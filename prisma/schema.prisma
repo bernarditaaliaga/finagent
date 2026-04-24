@@ -35,7 +35,6 @@ model Category {
   priority     String?       // "esencial", "necesario", "prescindible", "innecesario"
   frequency    String        @default("recurrente") // "recurrente" o "ocasional"
   transactions Transaction[]
-  fixedExpenses FixedExpense[]
   rules        CategoryRule[]
   budgets      CategoryBudget[]
   creditCardExpenses CreditCardExpense[]
@@ -65,8 +64,6 @@ model FixedExpense {
   currency    String   @default("CLP") // "CLP" o "USD"
   dayOfMonth  Int?     // día del mes en que se paga (null = no se sabe)
   type        String   @default("expense") // "expense" o "income"
-  categoryId  String?
-  category    Category? @relation(fields: [categoryId], references: [id])
   matchKeyword String?  // keyword para detectar pago automático en transacciones
   isActive    Boolean  @default(true)
   lastPaidAt  DateTime?
