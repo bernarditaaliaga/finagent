@@ -180,19 +180,23 @@ export function CategoriasClient({
     }
   }
 
+  const [autoCatResult, setAutoCatResult] = useState<string | null>(null);
+
   async function handleAutoCategorize() {
     setAutoCatLoading(true);
+    setAutoCatResult(null);
     try {
       const res = await fetch("/api/categorize", { method: "POST" });
       if (res.ok) {
         const data = await res.json();
-        alert(`Se categorizaron ${data.categorized} de ${data.total} transacciones sin categoria.`);
-        window.location.reload();
+        setAutoCatResult(`${data.categorized} de ${data.total} transacciones categorizadas`);
+        // Recargar después de un momento para que se vea el mensaje
+        setTimeout(() => window.location.reload(), 1500);
       } else {
-        alert("Error al auto-categorizar.");
+        setAutoCatResult("Error al auto-categorizar");
       }
     } catch {
-      alert("Error al auto-categorizar.");
+      setAutoCatResult("Error al auto-categorizar");
     } finally {
       setAutoCatLoading(false);
     }
@@ -354,6 +358,9 @@ export function CategoriasClient({
           <Sparkles className="w-4 h-4" />
           {autoCatLoading ? "Categorizando..." : "Auto-categorizar"}
         </button>
+        {autoCatResult && (
+          <span className="text-sm text-emerald-600 font-medium">{autoCatResult}</span>
+        )}
       </div>
 
       {/* Formulario */}
