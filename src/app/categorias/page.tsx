@@ -55,8 +55,11 @@ export default async function CategoriasPage({
     prisma.fixedExpense.findMany({ where: { isActive: true, type: "expense" } }),
   ]);
 
-  // Calcular total gastos fijos para mostrar en la categoría "Gastos Fijos"
+  // Gastos fijos: total mensual (budgetLimit) vs pagado este mes (spentThisMonth)
   const totalFixedExpenses = fixedExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const paidFixedThisMonth = fixedExpenses
+    .filter((e) => e.lastPaidAt && e.lastPaidAt >= startOfMonth && e.lastPaidAt < endOfMonth)
+    .reduce((sum, e) => sum + e.amount, 0);
 
   const categoryData = categories.map((cat) => {
     const txSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -70,8 +73,7 @@ export default async function CategoriasPage({
       priority: cat.priority,
       frequency: cat.frequency,
       totalTransactions: cat._count.transactions,
-      // "Gastos Fijos" muestra el total definido en gastos fijos, no las transacciones
-      spentThisMonth: isGastosFijos ? totalFixedExpenses : txSpent,
+      spentThisMonth: isGastosFijos ? paidFixedThisMonth : txSpent,
     };
   });
 
