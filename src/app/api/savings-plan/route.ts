@@ -171,10 +171,14 @@ export async function POST(request: Request) {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     const daysRemaining = daysInMonth - currentDay;
 
-    // === ANÁLISIS POR CATEGORÍA (excluir categorías de gastos fijos, ya contados arriba) ===
+    // === ANÁLISIS POR CATEGORÍA (excluir categorías de gastos fijos y cuotas TC, ya contados como costos fijos) ===
     const fixedCategoryIds = new Set(
       fixedExpenses.map((e) => e.categoryId).filter(Boolean) as string[]
     );
+    // También excluir categorías usadas en cuotas TC (son gastos fijos no negociables)
+    for (const exp of ccExpenses) {
+      if (exp.categoryId) fixedCategoryIds.add(exp.categoryId);
+    }
 
     const categoryInfo = categories.filter((cat) => !fixedCategoryIds.has(cat.id) && cat.frequency !== "ocasional").map((cat) => {
       const currentSpent = cat.transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
@@ -244,18 +248,19 @@ INGRESOS FIJOS MENSUALES:
 ${fixedIncomes.map((e) => `- ${e.name}: $${e.amount.toLocaleString("es-CL")} [${isPaidThisMonth(e) ? "YA RECIBIDO este mes" : "PENDIENTE de recibir"}]`).join("\n")}
 Total: $${totalFixedIncome.toLocaleString("es-CL")} | Recibido: $${totalPaidIncome.toLocaleString("es-CL")} | Pendiente: $${totalPendingIncome.toLocaleString("es-CL")}
 
-GASTOS FIJOS MENSUALES:
+GASTOS FIJOS MENSUALES (NO NEGOCIABLES — no se pueden reducir, no sugieran recortes aquí):
 ${fixedCosts.map((e) => `- ${e.name}${e.dayOfMonth ? ` (día ${e.dayOfMonth})` : ""}: $${e.amount.toLocaleString("es-CL")} [${isPaidThisMonth(e) ? "YA PAGADO" : "PENDIENTE"}]`).join("\n")}
-Total: $${totalFixedExpenses.toLocaleString("es-CL")} | Pagado: $${totalPaidExpenses.toLocaleString("es-CL")} | Pendiente: $${totalPendingExpenses.toLocaleString("es-CL")}
+${ccDetailThisMonth.length > 0 ? ccDetailThisMonth.map((c) => `- [Cuota TC] ${c.description}: $${c.cuota.toLocaleString("es-CL")}`).join("\n") : ""}
+Total gastos fijos: $${totalFixedExpenses.toLocaleString("es-CL")} + cuotas TC $${ccCuotasThisMonth.toLocaleString("es-CL")} = $${(totalFixedExpenses + ccCuotasThisMonth).toLocaleString("es-CL")}
+Pagado: $${totalPaidExpenses.toLocaleString("es-CL")} | Pendiente fijos: $${totalPendingExpenses.toLocaleString("es-CL")} + cuotas TC: $${ccCuotasThisMonth.toLocaleString("es-CL")}
 
-TARJETA DE CRÉDITO:
-- Cuotas este mes: $${ccCuotasThisMonth.toLocaleString("es-CL")}${ccDetailThisMonth.length > 0 ? `\n  (${ccDetailThisMonth.map((c) => `${c.description}: $${c.cuota.toLocaleString("es-CL")}`).join(", ")})` : ""}
-- Cuotas próximo mes: $${ccCuotasNextMonth.toLocaleString("es-CL")}${ccDetailNextMonth.length > 0 ? `\n  (${ccDetailNextMonth.map((c) => `${c.description}: $${c.cuota.toLocaleString("es-CL")}`).join(", ")})` : ""}
+CUOTAS TC PRÓXIMO MES: $${ccCuotasNextMonth.toLocaleString("es-CL")}${ccDetailNextMonth.length > 0 ? ` (${ccDetailNextMonth.map((c) => `${c.description}: $${c.cuota.toLocaleString("es-CL")}`).join(", ")})` : ""}
+IMPORTANTE: Los gastos fijos y cuotas TC son un bloque único no negociable. NO los separes por categoría. NO sugieran recortes en ellos. Solo se pueden ajustar los gastos VARIABLES listados más abajo.
 
 GASTOS VARIABLES YA REALIZADOS ESTE MES: $${spentSoFar.toLocaleString("es-CL")}
 
 ═══ GASTOS VARIABLES POR CATEGORÍA (promedio mensual y prioridad) ═══
-(NOTA: estas categorías son SOLO gastos variables. Los gastos fijos ya están contados arriba y NO aparecen aquí. No los cuentes dos veces.)
+(NOTA: estas son SOLO las categorías de gastos VARIABLES que se pueden ajustar. Los gastos fijos y cuotas TC ya están contados arriba como bloque fijo y NO aparecen aquí. No los cuentes dos veces ni sugieran presupuestos para ellos.)
 ${categoryInfo.filter((c) => c.avgMonthly > 0 || c.currentSpent > 0).map((c) => `- ${c.name} [${c.priority}]: promedio mensual $${c.avgMonthly.toLocaleString("es-CL")}, este mes $${c.currentSpent.toLocaleString("es-CL")}`).join("\n")}
 
 ═══ PRIORIDADES (qué tan reducible es cada categoría) ═══
@@ -267,7 +272,7 @@ No sugieras montos irreales — si alguien gasta $100.000 en bencina, no puede g
 - "necesario": reducción conservadora, máximo 10-15% del promedio
 - "prescindible": reducción moderada, máximo 15-25% del promedio
 - "innecesario": se puede recortar fuerte, 30-50% del promedio
-- Los gastos fijos NO son negociables, van aparte
+- Los gastos fijos y cuotas TC son un BLOQUE FIJO no negociable, ya están contados aparte. NO los incluyas en los presupuestos por categoría
 - El límite sugerido NUNCA debe ser menor al 60% del promedio histórico
 
 META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
@@ -277,20 +282,19 @@ META DE AHORRO DEL USUARIO: $${savingsTarget.toLocaleString("es-CL")} mensuales
 1. ANÁLISIS MES ACTUAL (${MONTH_NAMES[currentMonth - 1]}):
    Calcula: saldo actual ($${saldoActual.toLocaleString("es-CL")})
    + ingresos pendientes por recibir ($${totalPendingIncome.toLocaleString("es-CL")})
-   - gastos fijos pendientes ($${totalPendingExpenses.toLocaleString("es-CL")})
-   - cuotas TC pendientes ($${ccCuotasThisMonth.toLocaleString("es-CL")})
+   - gastos fijos + cuotas TC pendientes ($${(totalPendingExpenses + ccCuotasThisMonth).toLocaleString("es-CL")})
    = disponible real
    NOTA: los ingresos/gastos YA pagados están reflejados en el saldo, NO los sumes/restes de nuevo.
+   NOTA: gastos fijos y cuotas TC son un solo bloque intocable.
 
    Luego mira cuánto queda para gastos variables + ahorro. ¿Es realista ahorrar la meta este mes considerando los promedios de gasto variable?
 
 2. ANÁLISIS PRÓXIMO MES (${MONTH_NAMES[nextMonth - 1]}):
    Calcula: ingresos fijos totales ($${totalFixedIncome.toLocaleString("es-CL")})
-   - gastos fijos totales ($${totalFixedExpenses.toLocaleString("es-CL")})
-   - cuotas TC ($${ccCuotasNextMonth.toLocaleString("es-CL")})
+   - gastos fijos + cuotas TC ($${(totalFixedExpenses + ccCuotasNextMonth).toLocaleString("es-CL")})
    = disponible para gastos variables + ahorro
 
-   ¿Es viable ahorrar la meta si se ajustan los gastos por categoría según su prioridad?
+   ¿Es viable ahorrar la meta si se ajustan los gastos VARIABLES por categoría según su prioridad?
 
 3. PRESUPUESTOS SUGERIDOS: Para cada categoría con gasto, sugiere un límite mensual realista basado en:
    - Su promedio histórico
